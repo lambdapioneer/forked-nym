@@ -1,11 +1,13 @@
 // Copyright 2021 - Nym Technologies SA <contact@nymtech.net>
 // SPDX-License-Identifier: Apache-2.0
 
+use std::time::Duration;
 use client_core::client::{
     inbound_messages::{InputMessage, InputMessageSender},
     received_buffer::{
         ReceivedBufferMessage, ReceivedBufferRequestSender, ReconstructedMessagesReceiver,
     },
+    topology_control::TopologyAccessor,
 };
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
@@ -19,6 +21,7 @@ use tokio_tungstenite::{
     tungstenite::{protocol::Message as WsMessage, Error as WsError},
     WebSocketStream,
 };
+use crypto::deterministic_prng::DeterministicPRNG;
 use websocket_requests::{requests::ClientRequest, responses::ServerResponse};
 
 enum ReceivedResponseType {
@@ -38,6 +41,8 @@ pub(crate) struct Handler {
     self_full_address: Recipient,
     socket: Option<WebSocketStream<TcpStream>>,
     received_response_type: ReceivedResponseType,
+    average_packet_delay: Duration,
+    topology_accessor: TopologyAccessor,
 }
 
 // clone is used to use handler on a new connection, which initially is `None`
@@ -49,6 +54,8 @@ impl Clone for Handler {
             self_full_address: self.self_full_address,
             socket: None,
             received_response_type: Default::default(),
+            average_packet_delay: self.average_packet_delay.clone(),
+            topology_accessor: self.topology_accessor.clone(),
         }
     }
 }
@@ -66,6 +73,8 @@ impl Handler {
         msg_input: InputMessageSender,
         buffer_requester: ReceivedBufferRequestSender,
         self_full_address: Recipient,
+        average_packet_delay: Duration,
+        topology_accessor: TopologyAccessor,
     ) -> Self {
         Handler {
             msg_input,
@@ -73,6 +82,8 @@ impl Handler {
             self_full_address,
             socket: None,
             received_response_type: Default::default(),
+            average_packet_delay,
+            topology_accessor,
         }
     }
 
@@ -104,7 +115,33 @@ impl Handler {
         ServerResponse::SelfAddress(self.self_full_address)
     }
 
-    fn handle_request(&mut self, request: ClientRequest) -> Option<ServerResponse> {
+    async fn handle_create_surb(&self, nonce: Vec<u8>, destination: Recipient) -> Option<ServerResponse> {
+        let mut rng = DeterministicPRNG::from_nonce(nonce);
+
+        let topology_permit = self.topology_accessor.get_read_permit().await;
+        let topology_ref_option = topology_permit.as_ref();
+        if topology_ref_option.is_none() {
+            warn!("No valid topology available");
+            return None;
+        }
+
+        let reply_surb = ReplySurb::construct(
+            &mut rng,
+            &destination,
+            self.average_packet_delay,
+            topology_ref_option.as_ref().unwrap(),
+        );
+
+        match reply_surb {
+            Ok(reply_surb) => Some(ServerResponse::Surb(reply_surb)),
+            Err(err) => {
+                warn!("Failed to create reply sub {:?}", err);
+                None
+            }
+        }
+    }
+
+    async fn handle_request(&mut self, request: ClientRequest) -> Option<ServerResponse> {
         match request {
             ClientRequest::Send {
                 recipient,
@@ -116,10 +153,14 @@ impl Handler {
                 reply_surb,
             } => self.handle_reply(reply_surb, message),
             ClientRequest::SelfAddress => Some(self.handle_self_address()),
+            ClientRequest::CreateSurb {
+                nonce,
+                destination
+            } => self.handle_create_surb(nonce, destination).await,
         }
     }
 
-    fn handle_text_message(&mut self, msg: String) -> Option<WsMessage> {
+    async fn handle_text_message(&mut self, msg: String) -> Option<WsMessage> {
         debug!("Handling text message request");
         trace!("Content: {:?}", msg);
 
@@ -128,13 +169,13 @@ impl Handler {
 
         let response = match client_request {
             Err(err) => Some(ServerResponse::Error(err)),
-            Ok(req) => self.handle_request(req),
+            Ok(req) => self.handle_request(req).await,
         };
 
         response.map(|resp| WsMessage::text(resp.into_text()))
     }
 
-    fn handle_binary_message(&mut self, msg: Vec<u8>) -> Option<WsMessage> {
+    async fn handle_binary_message(&mut self, msg: Vec<u8>) -> Option<WsMessage> {
         debug!("Handling binary message request");
 
         self.received_response_type = ReceivedResponseType::Binary;
@@ -142,19 +183,19 @@ impl Handler {
 
         let response = match client_request {
             Err(err) => Some(ServerResponse::Error(err)),
-            Ok(req) => self.handle_request(req),
+            Ok(req) => self.handle_request(req).await,
         };
 
         response.map(|resp| WsMessage::Binary(resp.into_binary()))
     }
 
-    fn handle_ws_request(&mut self, raw_request: WsMessage) -> Option<WsMessage> {
+    async fn handle_ws_request(&mut self, raw_request: WsMessage) -> Option<WsMessage> {
         // apparently tungstenite auto-handles ping/pong/close messages so for now let's ignore
         // them and let's test that claim. If that's not the case, just copy code from
         // old version of this file.
         match raw_request {
-            WsMessage::Text(text_message) => self.handle_text_message(text_message),
-            WsMessage::Binary(binary_message) => self.handle_binary_message(binary_message),
+            WsMessage::Text(text_message) => self.handle_text_message(text_message).await,
+            WsMessage::Binary(binary_message) => self.handle_binary_message(binary_message).await,
             _ => None,
         }
     }
@@ -244,7 +285,7 @@ impl Handler {
                         break;
                     }
 
-                    if let Some(response) = self.handle_ws_request(socket_msg) {
+                    if let Some(response) = self.handle_ws_request(socket_msg).await {
                         if let Err(err) = self.send_websocket_response(response).await {
                             warn!(
                                 "Failed to send message over websocket: {}. Assuming the connection is dead.",

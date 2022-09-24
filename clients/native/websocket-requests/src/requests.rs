@@ -20,6 +20,9 @@ pub const REPLY_REQUEST_TAG: u8 = 0x01;
 /// Value tag representing [`SelfAddress`] variant of the [`ClientRequest`]
 pub const SELF_ADDRESS_REQUEST_TAG: u8 = 0x02;
 
+/// Value tag representing [`CreateSurb`] variant of the [`ClientRequest`]
+pub const CREATE_SURB_REQUEST_TAG: u8 = 0x03;
+
 #[allow(non_snake_case)]
 #[derive(Debug)]
 pub enum ClientRequest {
@@ -34,6 +37,10 @@ pub enum ClientRequest {
         reply_surb: ReplySurb,
     },
     SelfAddress,
+    CreateSurb {
+        nonce: Vec<u8>,
+        destination: Recipient,
+    }
 }
 
 // we could have been parsing it directly TryFrom<WsMessage>, but we want to retain
@@ -202,6 +209,63 @@ impl ClientRequest {
         ClientRequest::SelfAddress
     }
 
+    // CREATE_SURB_REQUEST_TAG || nonce_len || nonce || destination
+    fn serialize_create_surb(nonce: Vec<u8>, destination: Recipient) -> Vec<u8> {
+        let nonce_len_bytes = (nonce.len() as u64).to_be_bytes();
+
+        std::iter::once(CREATE_SURB_REQUEST_TAG)
+            .chain(nonce_len_bytes.iter().cloned())
+            .chain(nonce.into_iter())
+            .chain(destination.to_bytes().iter().cloned())
+            .collect()
+    }
+
+    // CREATE_SURB_REQUEST_TAG || nonce_len || nonce || destination
+    fn deserialize_create_surb(b: &[u8]) -> Result<Self, error::Error> {
+        // we need to have at least 1 (tag) + length tag + Recipient::LEN
+        if b.len() < 2 + size_of::<u64>() + Recipient::LEN {
+            return Err(error::Error::new(
+                ErrorKind::TooShortRequest,
+                "not enough data provided to recover 'create surb'".to_string(),
+            ));
+        }
+
+        // this MUST match because it was called by 'deserialize'
+        debug_assert_eq!(b[0], CREATE_SURB_REQUEST_TAG);
+
+        let nonce_len_bytes = &b[1..1 + size_of::<u64>()];
+        let nonce_len = u64::from_be_bytes(nonce_len_bytes.try_into().unwrap());
+        let offset_after_nonce = 1 + size_of::<u64>() + nonce_len as usize;
+        let nonce = &b[1 + size_of::<u64>()..offset_after_nonce];
+        if nonce.len() as u64 != nonce_len {
+            return Err(error::Error::new(
+                ErrorKind::MalformedRequest,
+                format!(
+                    "data len has inconsistent length. specified: {} got: {}",
+                    nonce_len,
+                    nonce.len()
+                ),
+            ));
+        }
+
+        let mut destination_bytes = [0u8; Recipient::LEN];
+        destination_bytes.copy_from_slice(&b[offset_after_nonce..offset_after_nonce + Recipient::LEN]);
+        let destination = match Recipient::try_from_bytes(destination_bytes) {
+            Ok(destination) => destination,
+            Err(err) => {
+                return Err(error::Error::new(
+                    ErrorKind::MalformedRequest,
+                    format!("malformed destination: {:?}", err),
+                ))
+            }
+        };
+
+        Ok(ClientRequest::CreateSurb {
+            nonce: nonce.to_vec(),
+            destination,
+        })
+    }
+
     pub fn serialize(self) -> Vec<u8> {
         match self {
             ClientRequest::Send {
@@ -216,6 +280,8 @@ impl ClientRequest {
             } => Self::serialize_reply(message, reply_surb),
 
             ClientRequest::SelfAddress => Self::serialize_self_address(),
+
+            ClientRequest::CreateSurb {nonce, destination} => Self::serialize_create_surb(nonce, destination),
         }
     }
 
@@ -245,6 +311,7 @@ impl ClientRequest {
             SEND_REQUEST_TAG => Self::deserialize_send(b),
             REPLY_REQUEST_TAG => Self::deserialize_reply(b),
             SELF_ADDRESS_REQUEST_TAG => Ok(Self::deserialize_self_address(b)),
+            CREATE_SURB_REQUEST_TAG => Self::deserialize_create_surb(b),
             n => Err(error::Error::new(
                 ErrorKind::UnknownRequest,
                 format!("type {}", n),
@@ -349,6 +416,31 @@ mod tests {
         let recovered = ClientRequest::deserialize(&bytes).unwrap();
         match recovered {
             ClientRequest::SelfAddress => (),
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn create_surb_serialization_works() {
+        let nonce = bs58::encode(b"foobar".to_vec()).into_vec();
+        let destination = Recipient::try_from_base58_string("CytBseW6yFXUMzz4SGAKdNLGR7q3sJLLYxyBGvutNEQV.4QXYyEVc5fUDjmmi8PrHN9tdUFV4PCvSJE1278cHyvoe@4sBbL1ngf1vtNqykydQKTFh26sQCw888GpUqvPvyNB4f").unwrap();
+        let destination_string = destination.to_string();
+
+        let create_surb_request = ClientRequest::CreateSurb {
+            nonce,
+            destination,
+        };
+
+        let bytes = create_surb_request.serialize();
+        let recovered = ClientRequest::deserialize(&bytes).unwrap();
+        match recovered {
+            ClientRequest::CreateSurb {
+                nonce,
+                destination,
+            } => {
+                assert_eq!(nonce, nonce);
+                assert_eq!(destination.to_string(), destination_string);
+            }
             _ => unreachable!(),
         }
     }

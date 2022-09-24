@@ -254,11 +254,17 @@ impl NymClient {
         &self,
         buffer_requester: ReceivedBufferRequestSender,
         msg_input: InputMessageSender,
+        topology_accessor: TopologyAccessor,
     ) {
         info!("Starting websocket listener...");
 
-        let websocket_handler =
-            websocket::Handler::new(msg_input, buffer_requester, self.as_mix_recipient());
+        let websocket_handler = websocket::Handler::new(
+            msg_input,
+            buffer_requester,
+            self.as_mix_recipient(),
+            self.config.get_base().get_average_packet_delay(),
+            topology_accessor,
+        );
 
         websocket::Listener::new(self.config.get_listening_port()).start(websocket_handler);
     }
@@ -345,6 +351,7 @@ impl NymClient {
 
         // channels responsible for controlling ack messages
         let (ack_sender, ack_receiver) = mpsc::unbounded();
+
         let shared_topology_accessor = TopologyAccessor::new();
 
         let reply_key_storage =
@@ -374,11 +381,15 @@ impl NymClient {
             sphinx_message_sender.clone(),
         );
 
-        self.start_cover_traffic_stream(shared_topology_accessor, sphinx_message_sender);
+        self.start_cover_traffic_stream(shared_topology_accessor.clone(), sphinx_message_sender);
 
         match self.config.get_socket_type() {
             SocketType::WebSocket => {
-                self.start_websocket_listener(received_buffer_request_sender, input_sender)
+                self.start_websocket_listener(
+                    received_buffer_request_sender,
+                    input_sender,
+                    shared_topology_accessor.clone()
+                )
             }
             SocketType::None => {
                 // if we did not start the socket, it means we're running (supposedly) in the native mode

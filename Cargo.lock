@@ -1052,6 +1052,7 @@ dependencies = [
  "pemstore",
  "rand 0.7.3",
  "rand_chacha 0.2.2",
+ "rand_seeder",
  "serde",
  "serde_bytes",
  "subtle-encoding",
@@ -4348,6 +4349,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_seeder"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf2890aaef0aa82719a50e808de264f9484b74b442e1a3a0e5ee38243ac40bdb"
+dependencies = [
+ "rand_core 0.6.3",
+]
+
+[[package]]
 name = "rand_xorshift"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5232,7 +5242,7 @@ dependencies = [
 [[package]]
 name = "sphinx"
 version = "0.1.0"
-source = "git+https://github.com/nymtech/sphinx?rev=c494250f2a78bed33a618d470792418eee932859#c494250f2a78bed33a618d470792418eee932859"
+source = "git+https://github.com/nymtech/sphinx?rev=b5def42c7058b959cf3e0d1bcebf7ff71369931f#b5def42c7058b959cf3e0d1bcebf7ff71369931f"
 dependencies = [
  "aes 0.7.5",
  "arrayref",
@@ -6575,6 +6585,7 @@ dependencies = [
 name = "websocket-requests"
 version = "0.1.0"
 dependencies = [
+ "bs58",
  "nymsphinx",
  "serde",
  "serde_json",

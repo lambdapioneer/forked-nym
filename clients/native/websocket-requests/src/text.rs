@@ -27,6 +27,11 @@ pub(super) enum ClientRequestText {
         message: String,
         reply_surb: String,
     },
+    #[serde(rename_all = "camelCase")]
+    CreateSurb {
+        nonce: String,
+        destination: String,
+    },
 }
 
 impl TryFrom<String> for ClientRequestText {
@@ -72,6 +77,15 @@ impl TryInto<ClientRequest> for ClientRequestText {
                     message: message_bytes,
                     reply_surb,
                 })
+            },
+            ClientRequestText::CreateSurb { nonce, destination: recipient } => {
+                let nonce = bs58::decode(nonce).into_vec().map_err(|err| {
+                    Self::Error::new(ErrorKind::MalformedRequest, err.to_string())
+                })?;
+                let destination = Recipient::try_from_base58_string(recipient).map_err(|err| {
+                    Self::Error::new(ErrorKind::MalformedRequest, err.to_string())
+                })?;
+                Ok(ClientRequest::CreateSurb{ nonce, destination })
             }
         }
     }
@@ -90,6 +104,10 @@ pub(super) enum ServerResponseText {
     },
     SelfAddress {
         address: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    Surb {
+        reply_surb: String,
     },
     Error {
         message: String,
@@ -131,6 +149,9 @@ impl From<ServerResponse> for ServerResponseText {
             }
             ServerResponse::SelfAddress(recipient) => ServerResponseText::SelfAddress {
                 address: recipient.to_string(),
+            },
+            ServerResponse::Surb(reply_surb) => ServerResponseText::Surb {
+                reply_surb: reply_surb.to_base58_string(),
             },
             ServerResponse::Error(err) => ServerResponseText::Error {
                 message: err.to_string(),
