@@ -116,18 +116,25 @@ impl ReplySurb {
     where
         R: RngCore + CryptoRng,
     {
-        let route =
-            topology.random_route_to_gateway(rng, DEFAULT_NUM_MIX_HOPS, recipient.gateway())?;
-        let delays = delays::generate_from_average_duration(route.len(), average_delay);
+        let route = topology.random_route_to_gateway(
+            rng,
+            DEFAULT_NUM_MIX_HOPS,
+            recipient.gateway()
+        )?;
+        let delays = delays::generate_from_average_duration_with_rng(
+            route.len(),
+            average_delay,
+            rng
+        );
         let destination = recipient.as_sphinx_destination();
 
         let surb_material = SURBMaterial::new(route, delays, destination);
 
         // this can't fail as we know we have a valid route to gateway and have correct number of delays
-        Ok(ReplySurb {
-            surb: surb_material.construct_SURB().unwrap(),
-            encryption_key: SurbEncryptionKey::new(rng),
-        })
+        let surb = surb_material.construct_SURB_with_rng(rng).unwrap();
+        let encryption_key = SurbEncryptionKey::new(rng);
+
+        Ok(ReplySurb { surb, encryption_key })
     }
 
     /// Returns the expected number of bytes the [`ReplySURB`] will take after serialization.
