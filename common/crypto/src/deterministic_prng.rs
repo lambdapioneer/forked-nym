@@ -1,5 +1,5 @@
 use rand::{CryptoRng, RngCore, SeedableRng};
-use rand_chacha::{ChaCha20Rng, rand_core};
+use rand_chacha::{rand_core, ChaCha20Rng};
 use rand_seeder::Seeder;
 
 /// A PRNG that produces deterministic output given a nonce value.
@@ -33,7 +33,6 @@ impl RngCore for DeterministicPRNG {
         self.rng.try_fill_bytes(dest)
     }
 }
-
 
 #[cfg(test)]
 mod tests {

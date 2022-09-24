@@ -38,9 +38,9 @@ pub enum ClientRequest {
     },
     SelfAddress,
     CreateSurb {
-        nonce: Vec<u8>,
         destination: Recipient,
-    }
+        nonce: Option<Vec<u8>>,
+    },
 }
 
 // we could have been parsing it directly TryFrom<WsMessage>, but we want to retain
@@ -209,21 +209,31 @@ impl ClientRequest {
         ClientRequest::SelfAddress
     }
 
-    // CREATE_SURB_REQUEST_TAG || nonce_len || nonce || destination
-    fn serialize_create_surb(nonce: Vec<u8>, destination: Recipient) -> Vec<u8> {
-        let nonce_len_bytes = (nonce.len() as u64).to_be_bytes();
-
-        std::iter::once(CREATE_SURB_REQUEST_TAG)
-            .chain(nonce_len_bytes.iter().cloned())
-            .chain(nonce.into_iter())
-            .chain(destination.to_bytes().iter().cloned())
-            .collect()
+    // CREATE_SURB_REQUEST_TAG || destination || nonce_len || nonce (might be length 0)
+    fn serialize_create_surb(destination: Recipient, nonce: Option<Vec<u8>>) -> Vec<u8> {
+        match nonce {
+            Some(nonce) => {
+                let nonce_len_bytes = (nonce.len() as u64).to_be_bytes();
+                std::iter::once(CREATE_SURB_REQUEST_TAG)
+                    .chain(destination.to_bytes().iter().cloned())
+                    .chain(nonce_len_bytes.iter().cloned())
+                    .chain(nonce.iter().cloned())
+                    .collect()
+            }
+            None => {
+                let nonce_len_bytes = 0u64.to_be_bytes();
+                std::iter::once(CREATE_SURB_REQUEST_TAG)
+                    .chain(destination.to_bytes().iter().cloned())
+                    .chain(nonce_len_bytes.iter().cloned())
+                    .collect()
+            }
+        }
     }
 
-    // CREATE_SURB_REQUEST_TAG || nonce_len || nonce || destination
+    // CREATE_SURB_REQUEST_TAG || destination || nonce_len || nonce (might be length 0)
     fn deserialize_create_surb(b: &[u8]) -> Result<Self, error::Error> {
-        // we need to have at least 1 (tag) + length tag + Recipient::LEN
-        if b.len() < 2 + size_of::<u64>() + Recipient::LEN {
+        // we need to have at least 1 (tag) + Recipient::LEN + nonce length tag
+        if b.len() < 1 + size_of::<u64>() + Recipient::LEN {
             return Err(error::Error::new(
                 ErrorKind::TooShortRequest,
                 "not enough data provided to recover 'create surb'".to_string(),
@@ -233,23 +243,8 @@ impl ClientRequest {
         // this MUST match because it was called by 'deserialize'
         debug_assert_eq!(b[0], CREATE_SURB_REQUEST_TAG);
 
-        let nonce_len_bytes = &b[1..1 + size_of::<u64>()];
-        let nonce_len = u64::from_be_bytes(nonce_len_bytes.try_into().unwrap());
-        let offset_after_nonce = 1 + size_of::<u64>() + nonce_len as usize;
-        let nonce = &b[1 + size_of::<u64>()..offset_after_nonce];
-        if nonce.len() as u64 != nonce_len {
-            return Err(error::Error::new(
-                ErrorKind::MalformedRequest,
-                format!(
-                    "data len has inconsistent length. specified: {} got: {}",
-                    nonce_len,
-                    nonce.len()
-                ),
-            ));
-        }
-
         let mut destination_bytes = [0u8; Recipient::LEN];
-        destination_bytes.copy_from_slice(&b[offset_after_nonce..offset_after_nonce + Recipient::LEN]);
+        destination_bytes.copy_from_slice(&b[1..1 + Recipient::LEN]);
         let destination = match Recipient::try_from_bytes(destination_bytes) {
             Ok(destination) => destination,
             Err(err) => {
@@ -260,10 +255,30 @@ impl ClientRequest {
             }
         };
 
-        Ok(ClientRequest::CreateSurb {
-            nonce: nonce.to_vec(),
-            destination,
-        })
+        const OFFSET_AFTER_DESTINATION: usize = 1 + Recipient::LEN;
+        let nonce_len_bytes =
+            &b[OFFSET_AFTER_DESTINATION..OFFSET_AFTER_DESTINATION + size_of::<u64>()];
+        let nonce_len = u64::from_be_bytes(nonce_len_bytes.try_into().unwrap());
+
+        let nonce = if nonce_len == 0 {
+            None
+        } else {
+            const OFFSET_AFTER_NONCE_LENGTH: usize = OFFSET_AFTER_DESTINATION + size_of::<u64>();
+            let nonce_bytes = &b[OFFSET_AFTER_NONCE_LENGTH..];
+            if nonce_bytes.len() as u64 != nonce_len {
+                return Err(error::Error::new(
+                    ErrorKind::MalformedRequest,
+                    format!(
+                        "nonce len has inconsistent length. specified: {} got: {}",
+                        nonce_len,
+                        nonce_bytes.len()
+                    ),
+                ));
+            }
+            Some(nonce_bytes.to_vec())
+        };
+
+        Ok(ClientRequest::CreateSurb { destination, nonce })
     }
 
     pub fn serialize(self) -> Vec<u8> {
@@ -281,7 +296,9 @@ impl ClientRequest {
 
             ClientRequest::SelfAddress => Self::serialize_self_address(),
 
-            ClientRequest::CreateSurb {nonce, destination} => Self::serialize_create_surb(nonce, destination),
+            ClientRequest::CreateSurb { destination, nonce } => {
+                Self::serialize_create_surb(destination, nonce)
+            }
         }
     }
 
@@ -421,25 +438,43 @@ mod tests {
     }
 
     #[test]
-    fn create_surb_serialization_works() {
+    fn create_surb_serialization_works_with_nonce() {
         let nonce = bs58::encode(b"foobar".to_vec()).into_vec();
         let destination = Recipient::try_from_base58_string("CytBseW6yFXUMzz4SGAKdNLGR7q3sJLLYxyBGvutNEQV.4QXYyEVc5fUDjmmi8PrHN9tdUFV4PCvSJE1278cHyvoe@4sBbL1ngf1vtNqykydQKTFh26sQCw888GpUqvPvyNB4f").unwrap();
         let destination_string = destination.to_string();
 
         let create_surb_request = ClientRequest::CreateSurb {
-            nonce,
             destination,
+            nonce: Some(nonce),
         };
 
         let bytes = create_surb_request.serialize();
         let recovered = ClientRequest::deserialize(&bytes).unwrap();
         match recovered {
-            ClientRequest::CreateSurb {
-                nonce,
-                destination,
-            } => {
-                assert_eq!(nonce, nonce);
+            ClientRequest::CreateSurb { destination, nonce } => {
                 assert_eq!(destination.to_string(), destination_string);
+                assert_eq!(nonce, nonce);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn create_surb_serialization_works_without_nonce() {
+        let destination = Recipient::try_from_base58_string("CytBseW6yFXUMzz4SGAKdNLGR7q3sJLLYxyBGvutNEQV.4QXYyEVc5fUDjmmi8PrHN9tdUFV4PCvSJE1278cHyvoe@4sBbL1ngf1vtNqykydQKTFh26sQCw888GpUqvPvyNB4f").unwrap();
+        let destination_string = destination.to_string();
+
+        let create_surb_request = ClientRequest::CreateSurb {
+            destination,
+            nonce: None,
+        };
+
+        let bytes = create_surb_request.serialize();
+        let recovered = ClientRequest::deserialize(&bytes).unwrap();
+        match recovered {
+            ClientRequest::CreateSurb { destination, nonce } => {
+                assert_eq!(destination.to_string(), destination_string);
+                assert_eq!(nonce, nonce);
             }
             _ => unreachable!(),
         }

@@ -1,7 +1,6 @@
 // Copyright 2021 - Nym Technologies SA <contact@nymtech.net>
 // SPDX-License-Identifier: Apache-2.0
 
-use std::time::Duration;
 use client_core::client::{
     inbound_messages::{InputMessage, InputMessageSender},
     received_buffer::{
@@ -9,19 +8,21 @@ use client_core::client::{
     },
     topology_control::TopologyAccessor,
 };
+use crypto::deterministic_prng::DeterministicPRNG;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use log::*;
 use nymsphinx::addressing::clients::Recipient;
 use nymsphinx::anonymous_replies::ReplySurb;
 use nymsphinx::receiver::ReconstructedMessage;
+use rand::rngs::OsRng;
+use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     accept_async,
     tungstenite::{protocol::Message as WsMessage, Error as WsError},
     WebSocketStream,
 };
-use crypto::deterministic_prng::DeterministicPRNG;
 use websocket_requests::{requests::ClientRequest, responses::ServerResponse};
 
 enum ReceivedResponseType {
@@ -54,7 +55,7 @@ impl Clone for Handler {
             self_full_address: self.self_full_address,
             socket: None,
             received_response_type: Default::default(),
-            average_packet_delay: self.average_packet_delay.clone(),
+            average_packet_delay: self.average_packet_delay,
             topology_accessor: self.topology_accessor.clone(),
         }
     }
@@ -115,9 +116,11 @@ impl Handler {
         ServerResponse::SelfAddress(self.self_full_address)
     }
 
-    async fn handle_create_surb(&self, nonce: Vec<u8>, destination: Recipient) -> Option<ServerResponse> {
-        let mut rng = DeterministicPRNG::from_nonce(nonce);
-
+    async fn handle_create_surb(
+        &self,
+        destination: Recipient,
+        nonce: Option<Vec<u8>>,
+    ) -> Option<ServerResponse> {
         let topology_permit = self.topology_accessor.get_read_permit().await;
         let topology_ref_option = topology_permit.as_ref();
         if topology_ref_option.is_none() {
@@ -125,12 +128,20 @@ impl Handler {
             return None;
         }
 
-        let reply_surb = ReplySurb::construct(
-            &mut rng,
-            &destination,
-            self.average_packet_delay,
-            topology_ref_option.as_ref().unwrap(),
-        );
+        let reply_surb = match &nonce {
+            Some(nonce) => ReplySurb::construct(
+                &mut DeterministicPRNG::from_nonce(nonce.to_owned()),
+                &destination,
+                self.average_packet_delay,
+                topology_ref_option.as_ref().unwrap(),
+            ),
+            None => ReplySurb::construct(
+                &mut OsRng,
+                &destination,
+                self.average_packet_delay,
+                topology_ref_option.as_ref().unwrap(),
+            ),
+        };
 
         match reply_surb {
             Ok(reply_surb) => Some(ServerResponse::Surb(reply_surb)),
@@ -153,10 +164,9 @@ impl Handler {
                 reply_surb,
             } => self.handle_reply(reply_surb, message),
             ClientRequest::SelfAddress => Some(self.handle_self_address()),
-            ClientRequest::CreateSurb {
-                nonce,
-                destination
-            } => self.handle_create_surb(nonce, destination).await,
+            ClientRequest::CreateSurb { destination, nonce } => {
+                self.handle_create_surb(destination, nonce).await
+            }
         }
     }
 

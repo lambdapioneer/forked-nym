@@ -384,13 +384,11 @@ impl NymClient {
         self.start_cover_traffic_stream(shared_topology_accessor.clone(), sphinx_message_sender);
 
         match self.config.get_socket_type() {
-            SocketType::WebSocket => {
-                self.start_websocket_listener(
-                    received_buffer_request_sender,
-                    input_sender,
-                    shared_topology_accessor.clone()
-                )
-            }
+            SocketType::WebSocket => self.start_websocket_listener(
+                received_buffer_request_sender,
+                input_sender,
+                shared_topology_accessor.clone(),
+            ),
             SocketType::None => {
                 // if we did not start the socket, it means we're running (supposedly) in the native mode
                 // and hence we should announce 'ourselves' to the buffer

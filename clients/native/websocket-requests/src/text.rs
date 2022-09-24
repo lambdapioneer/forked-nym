@@ -29,8 +29,8 @@ pub(super) enum ClientRequestText {
     },
     #[serde(rename_all = "camelCase")]
     CreateSurb {
-        nonce: String,
         destination: String,
+        nonce: Option<String>,
     },
 }
 
@@ -77,15 +77,22 @@ impl TryInto<ClientRequest> for ClientRequestText {
                     message: message_bytes,
                     reply_surb,
                 })
-            },
-            ClientRequestText::CreateSurb { nonce, destination: recipient } => {
-                let nonce = bs58::decode(nonce).into_vec().map_err(|err| {
-                    Self::Error::new(ErrorKind::MalformedRequest, err.to_string())
-                })?;
+            }
+            ClientRequestText::CreateSurb {
+                nonce,
+                destination: recipient,
+            } => {
                 let destination = Recipient::try_from_base58_string(recipient).map_err(|err| {
                     Self::Error::new(ErrorKind::MalformedRequest, err.to_string())
                 })?;
-                Ok(ClientRequest::CreateSurb{ nonce, destination })
+                let nonce = match nonce {
+                    Some(nonce) => Some(bs58::decode(nonce).into_vec().map_err(|err| {
+                        Self::Error::new(ErrorKind::MalformedRequest, err.to_string())
+                    })?),
+                    None => None,
+                };
+
+                Ok(ClientRequest::CreateSurb { destination, nonce })
             }
         }
     }
