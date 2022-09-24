@@ -14,6 +14,8 @@ pub mod hmac;
 pub mod shared_key;
 #[cfg(feature = "symmetric")]
 pub mod symmetric;
+#[cfg(feature = "prng")]
+pub mod deterministic_prng;
 
 #[cfg(feature = "hashing")]
 pub use digest::{Digest, OutputSizeUser};
