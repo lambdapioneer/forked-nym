@@ -13,6 +13,7 @@ pub enum ReplyKeyStorageError {
     DbReadError(sled::Error),
     DbWriteError(sled::Error),
     DbOpenError(sled::Error),
+    DuplicateKey,
 }
 
 /// Permanent storage for keys in all sent [`ReplySURB`]
@@ -63,7 +64,7 @@ impl ReplyKeyStorage {
             Err(e) => Err(ReplyKeyStorageError::DbWriteError(e)),
             Ok(existing_key) => {
                 if existing_key.is_some() {
-                    panic!("HASH COLLISION DETECTED")
+                    return Err(ReplyKeyStorageError::DuplicateKey);
                 };
                 Ok(())
             }

@@ -255,6 +255,7 @@ impl NymClient {
         buffer_requester: ReceivedBufferRequestSender,
         msg_input: InputMessageSender,
         topology_accessor: TopologyAccessor,
+        reply_key_storage: ReplyKeyStorage,
     ) {
         info!("Starting websocket listener...");
 
@@ -264,6 +265,7 @@ impl NymClient {
             self.as_mix_recipient(),
             self.config.get_base().get_average_packet_delay(),
             topology_accessor,
+            reply_key_storage,
         );
 
         websocket::Listener::new(self.config.get_listening_port()).start(websocket_handler);
@@ -375,7 +377,7 @@ impl NymClient {
         self.start_mix_traffic_controller(sphinx_message_receiver, gateway_client);
         self.start_real_traffic_controller(
             shared_topology_accessor.clone(),
-            reply_key_storage,
+            reply_key_storage.clone(),
             ack_receiver,
             input_receiver,
             sphinx_message_sender.clone(),
@@ -388,6 +390,7 @@ impl NymClient {
                 received_buffer_request_sender,
                 input_sender,
                 shared_topology_accessor.clone(),
+                reply_key_storage.clone(),
             ),
             SocketType::None => {
                 // if we did not start the socket, it means we're running (supposedly) in the native mode

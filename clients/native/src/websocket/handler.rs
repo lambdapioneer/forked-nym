@@ -1,6 +1,7 @@
 // Copyright 2021 - Nym Technologies SA <contact@nymtech.net>
 // SPDX-License-Identifier: Apache-2.0
 
+use client_core::client::reply_key_storage::{ReplyKeyStorage, ReplyKeyStorageError};
 use client_core::client::{
     inbound_messages::{InputMessage, InputMessageSender},
     received_buffer::{
@@ -44,6 +45,7 @@ pub(crate) struct Handler {
     received_response_type: ReceivedResponseType,
     average_packet_delay: Duration,
     topology_accessor: TopologyAccessor,
+    reply_key_storage: ReplyKeyStorage,
 }
 
 // clone is used to use handler on a new connection, which initially is `None`
@@ -57,6 +59,7 @@ impl Clone for Handler {
             received_response_type: Default::default(),
             average_packet_delay: self.average_packet_delay,
             topology_accessor: self.topology_accessor.clone(),
+            reply_key_storage: self.reply_key_storage.clone(),
         }
     }
 }
@@ -76,6 +79,7 @@ impl Handler {
         self_full_address: Recipient,
         average_packet_delay: Duration,
         topology_accessor: TopologyAccessor,
+        reply_key_storage: ReplyKeyStorage,
     ) -> Self {
         Handler {
             msg_input,
@@ -85,6 +89,7 @@ impl Handler {
             received_response_type: Default::default(),
             average_packet_delay,
             topology_accessor,
+            reply_key_storage,
         }
     }
 
@@ -117,7 +122,7 @@ impl Handler {
     }
 
     async fn handle_create_surb(
-        &self,
+        &mut self,
         destination: Recipient,
         nonce: Option<Vec<u8>>,
     ) -> Option<ServerResponse> {
@@ -142,6 +147,25 @@ impl Handler {
                 topology_ref_option.as_ref().unwrap(),
             ),
         };
+
+        // add reply key to local reply key storage
+        if let Ok(reply_surb) = &reply_surb {
+            match self
+                .reply_key_storage
+                .insert_encryption_key(reply_surb.encryption_key().clone())
+            {
+                Ok(_) => { /* no-op */ }
+                Err(ReplyKeyStorageError::DuplicateKey) => {
+                    // we would expect there to be duplicate keys if a nonce is given; however if
+                    // there is none (and we are supposed to generate everything at random), this
+                    // is a reason to "worry"
+                    if nonce.is_none() {
+                        panic!("duplicate reply key in storage")
+                    }
+                }
+                Err(err) => panic!("reply key storage failure: {:?}", err),
+            }
+        }
 
         match reply_surb {
             Ok(reply_surb) => Some(ServerResponse::Surb(reply_surb)),
