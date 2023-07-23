@@ -19,6 +19,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 use time::OffsetDateTime;
+use nym_sphinx::preparer::SurbOrigin;
 
 use crate::client::helpers::new_interval_stream;
 use crate::client::transmission_buffer::TransmissionBuffer;
@@ -579,7 +580,7 @@ where
         if let Some(reply_surb) = maybe_reply_surb {
             match self
                 .message_handler
-                .try_prepare_single_reply_chunk_for_sending(reply_surb, ack_ref.fragment_data())
+                .try_prepare_single_reply_chunk_for_sending(reply_surb, ack_ref.fragment_data(), SurbOrigin::SourceCreated)
                 .await
             {
                 Ok(prepared) => {

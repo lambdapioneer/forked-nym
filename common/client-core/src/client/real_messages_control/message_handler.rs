@@ -1,30 +1,34 @@
 // Copyright 2022 - Nym Technologies SA <contact@nymtech.net>
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+
+use log::{debug, error, info, trace, warn};
+use rand::{CryptoRng, Rng};
+use rand::rngs::OsRng;
+use thiserror::Error;
+
+use nym_sphinx::acknowledgements::AckKey;
+use nym_sphinx::addressing::clients::Recipient;
+use nym_sphinx::anonymous_replies::{ReplySurb, SurbEncryptionKey};
+use nym_sphinx::anonymous_replies::requests::{AnonymousSenderTag, RepliableMessage, ReplyMessage};
+use nym_sphinx::chunking::fragment::{Fragment, FragmentIdentifier};
+use nym_sphinx::Delay;
+use nym_sphinx::message::NymMessage;
+use nym_sphinx::params::{DEFAULT_NUM_MIX_HOPS, PacketSize, PacketType};
+use nym_sphinx::preparer::{MessagePreparer, PreparedFragment, SurbOrigin};
+use nym_task::connections::TransmissionLane;
+use nym_topology::{NymTopology, NymTopologyError};
+
+use crate::client::real_messages_control::{AckActionSender, Action};
 use crate::client::real_messages_control::acknowledgement_control::PendingAcknowledgement;
 use crate::client::real_messages_control::real_traffic_stream::{
     BatchRealMessageSender, RealMessage,
 };
-use crate::client::real_messages_control::{AckActionSender, Action};
 use crate::client::replies::reply_storage::{ReceivedReplySurbsMap, SentReplyKeys, UsedSenderTags};
 use crate::client::topology_control::{TopologyAccessor, TopologyReadPermit};
-use log::{debug, error, info, trace, warn};
-use nym_sphinx::acknowledgements::AckKey;
-use nym_sphinx::addressing::clients::Recipient;
-use nym_sphinx::anonymous_replies::requests::{AnonymousSenderTag, RepliableMessage, ReplyMessage};
-use nym_sphinx::anonymous_replies::{ReplySurb, SurbEncryptionKey};
-use nym_sphinx::chunking::fragment::{Fragment, FragmentIdentifier};
-use nym_sphinx::message::NymMessage;
-use nym_sphinx::params::{PacketSize, PacketType, DEFAULT_NUM_MIX_HOPS};
-use nym_sphinx::preparer::{MessagePreparer, PreparedFragment};
-use nym_sphinx::Delay;
-use nym_task::connections::TransmissionLane;
-use nym_topology::{NymTopology, NymTopologyError};
-use rand::{CryptoRng, Rng};
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
-use thiserror::Error;
 
 // TODO: move that error elsewhere since it seems to be contaminating different files
 #[derive(Debug, Error)]
@@ -49,7 +53,7 @@ impl PreparationError {
 }
 
 #[derive(Debug, Error)]
-#[error("Failed to prepare packets - {source}. {} reply surbs will be returned", .returned_surbs.as_ref().map(|s| s.len()).unwrap_or_default())]
+#[error("Failed to prepare packets - {source}. {} reply surbs will be returned", .returned_surbs.as_ref().map(| s | s.len()).unwrap_or_default())]
 pub struct SurbWrappedPreparationError {
     #[source]
     source: PreparationError,
@@ -58,8 +62,8 @@ pub struct SurbWrappedPreparationError {
 }
 
 impl<T> From<T> for SurbWrappedPreparationError
-where
-    T: Into<PreparationError>,
+    where
+        T: Into<PreparationError>,
 {
     fn from(err: T) -> Self {
         SurbWrappedPreparationError {
@@ -159,8 +163,8 @@ pub(crate) struct MessageHandler<R> {
 }
 
 impl<R> MessageHandler<R>
-where
-    R: CryptoRng + Rng,
+    where
+        R: CryptoRng + Rng,
 {
     pub(crate) fn new(
         config: Config,
@@ -171,8 +175,8 @@ where
         reply_key_storage: SentReplyKeys,
         tag_storage: UsedSenderTags,
     ) -> Self
-    where
-        R: Copy,
+        where
+            R: Copy,
     {
         let message_preparer = MessagePreparer::new(
             rng,
@@ -180,7 +184,7 @@ where
             config.average_packet_delay,
             config.average_ack_delay,
         )
-        .with_mix_hops(config.num_mix_hops);
+            .with_mix_hops(config.num_mix_hops);
 
         MessageHandler {
             config,
@@ -267,6 +271,7 @@ where
         message: ReplyMessage,
         reply_surb: ReplySurb,
         is_extra_surb_request: bool,
+        surb_origin: SurbOrigin,
     ) -> Result<(), SurbWrappedPreparationError> {
         let msg = NymMessage::new_reply(message);
         let packet_size = self.optimal_packet_size(&msg);
@@ -288,7 +293,7 @@ where
         let chunk = fragment.pop().unwrap();
         let chunk_clone = chunk.clone();
         let prepared_fragment = self
-            .try_prepare_single_reply_chunk_for_sending(reply_surb, chunk_clone)
+            .try_prepare_single_reply_chunk_for_sending(reply_surb, chunk_clone, surb_origin)
             .await?;
 
         let real_messages = RealMessage::new(
@@ -320,7 +325,7 @@ where
 
         let surbs_request =
             ReplyMessage::new_surb_request_message(self.config.sender_address, amount);
-        self.try_send_single_surb_message(from, surbs_request, reply_surb, true)
+        self.try_send_single_surb_message(from, surbs_request, reply_surb, true, SurbOrigin::SourceCreated)
             .await
     }
 
@@ -363,7 +368,7 @@ where
             fragments.into_iter().map(|f| (lane, f)).collect(),
             reply_surbs,
         )
-        .await
+            .await
     }
 
     pub(crate) async fn try_send_reply_chunks(
@@ -480,6 +485,18 @@ where
         Ok(())
     }
 
+    pub(crate) async fn try_send_message_with_supplied_surb(
+        &mut self,
+        surb: ReplySurb,
+        message: Vec<u8>,
+        _lane: TransmissionLane,
+        _packet_type: PacketType,
+    ) {
+        let reply_message = ReplyMessage::new_data_message(message);
+        let target_tag = AnonymousSenderTag::new_random(&mut OsRng);
+        self.try_send_single_surb_message(target_tag, reply_message, surb, false, SurbOrigin::External).await.unwrap()
+    }
+
     pub(crate) async fn try_send_additional_reply_surbs(
         &mut self,
         recipient: Recipient,
@@ -502,7 +519,7 @@ where
             TransmissionLane::AdditionalReplySurbs,
             packet_type,
         )
-        .await?;
+            .await?;
 
         log::trace!("storing {} reply keys", reply_keys.len());
         self.reply_key_storage.insert_multiple(reply_keys);
@@ -591,6 +608,7 @@ where
                         &self.config.ack_key,
                         reply_surb,
                         PacketType::Mix,
+                        SurbOrigin::SourceCreated,
                     )
                     .unwrap()
             })
@@ -601,6 +619,7 @@ where
         &mut self,
         reply_surb: ReplySurb,
         chunk: Fragment,
+        surb_origin: SurbOrigin,
     ) -> Result<PreparedFragment, SurbWrappedPreparationError> {
         let topology_permit = self.topology_access.get_read_permit().await;
         let topology = match self.get_topology(&topology_permit) {
@@ -616,6 +635,7 @@ where
                 &self.config.ack_key,
                 reply_surb,
                 PacketType::Mix,
+                surb_origin,
             )
             .unwrap();
 

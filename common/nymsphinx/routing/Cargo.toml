@@ -8,6 +8,7 @@ license = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
+rand = { version = "0.7.3", features = ["wasm-bindgen"] }
 thiserror = { workspace = true }
 
 nym-sphinx-addressing = { path = "../addressing" }

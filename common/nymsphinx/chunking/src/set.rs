@@ -1,6 +1,7 @@
 // Copyright 2021 - Nym Technologies SA <contact@nymtech.net>
 // SPDX-License-Identifier: Apache-2.0
 
+use log::info;
 use crate::fragment::{
     linked_fragment_payload_max_len, unlinked_fragment_payload_max_len, Fragment,
     LINKED_FRAGMENTED_HEADER_LEN, UNLINKED_FRAGMENTED_HEADER_LEN,
@@ -80,7 +81,7 @@ pub(crate) fn generate_set_id<R: Rng>(rng: &mut R) -> i32 {
 
 /// Splits underlying message into multiple `Fragment`s while all of them fit in a single
 /// `Set` (number of `Fragment`s <= 255)
-fn prepare_unlinked_fragmented_set(
+pub fn prepare_unlinked_fragmented_set(
     message: &[u8],
     id: i32,
     max_plaintext_size: usize,
@@ -241,6 +242,7 @@ pub fn split_into_sets<R: Rng>(
 ) -> Vec<FragmentSet> {
     let num_of_sets = total_number_of_sets(message.len(), max_plaintext_size);
     if num_of_sets == 1 {
+        info!("single set split");
         let set_id = generate_set_id(rng);
         vec![prepare_fragment_set(
             message,

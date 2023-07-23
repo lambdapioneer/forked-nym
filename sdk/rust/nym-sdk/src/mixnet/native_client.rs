@@ -1,17 +1,20 @@
+use futures::StreamExt;
+
 use nym_client_core::client::{
     base_client::{ClientInput, ClientOutput, ClientState},
     inbound_messages::InputMessage,
     received_buffer::ReconstructedMessagesReceiver,
 };
-use nym_sphinx::addressing::clients::Recipient;
+use nym_client_core::config::DebugConfig;
+use nym_crypto::deterministic_prng::DeterministicPRNG;
 use nym_sphinx::{params::PacketType, receiver::ReconstructedMessage};
+use nym_sphinx::addressing::clients::Recipient;
+use nym_sphinx::anonymous_replies::ReplySurb;
+use nym_sphinx::anonymous_replies::requests::AnonymousSenderTag;
 use nym_task::{
     connections::{ConnectionCommandSender, LaneQueueLengths, TransmissionLane},
     TaskManager,
 };
-
-use futures::StreamExt;
-use nym_sphinx::anonymous_replies::requests::AnonymousSenderTag;
 use nym_topology::NymTopology;
 
 use crate::mixnet::client::{IncludedSurbs, MixnetClientBuilder};
@@ -41,6 +44,7 @@ pub struct MixnetClient {
     /// The task manager that controlls all the spawned tasks that the clients uses to do it's job.
     pub(crate) task_manager: TaskManager,
     pub(crate) packet_type: Option<PacketType>,
+    pub(crate) config: DebugConfig,
 }
 
 impl MixnetClient {
@@ -78,6 +82,22 @@ impl MixnetClient {
         MixnetClientSender {
             client_input: self.client_input.clone(),
         }
+    }
+
+    pub async fn create_surb(&self, destination: &Recipient, nonce: Vec<u8>) -> Option<ReplySurb> {
+        let topology_permit = self.client_state.topology_accessor.get_read_permit().await;
+        let topology_ref_option = topology_permit.as_ref();
+        if topology_ref_option.is_none() {
+            log::warn!("No valid topology available");
+            return None;
+        }
+
+        return ReplySurb::construct(
+            &mut DeterministicPRNG::from_nonce(nonce.to_owned()),
+            &destination,
+            self.config.traffic.average_packet_delay,
+            topology_ref_option.as_ref().unwrap(),
+        ).ok();
     }
 
     /// Get a shallow clone of [`ConnectionCommandSender`]. This is useful if you want to e.g
@@ -174,6 +194,26 @@ impl MixnetClient {
         self.send(input_msg).await
     }
 
+    pub async fn send_str_with_surb(
+        &self,
+        surb: ReplySurb,
+        message: &str,
+    ) {
+        self.send_bytes_with_surb(surb, message).await;
+    }
+
+    pub async fn send_bytes_with_surb<M: AsRef<[u8]>>(
+        &self,
+        surb: ReplySurb,
+        message: M,
+    ) {
+        self.send(InputMessage::WithSuppliedSurb {
+            surb,
+            data: Vec::from(message.as_ref()),
+            lane: TransmissionLane::General,
+        }).await;
+    }
+
     /// Sends stringy reply data to the supplied anonymous recipient.
     ///
     /// # Example
@@ -245,8 +285,8 @@ impl MixnetClient {
 
     /// Provide a callback to execute on incoming messages from the mixnet.
     pub async fn on_messages<F>(&mut self, fun: F)
-    where
-        F: Fn(ReconstructedMessage),
+        where
+            F: Fn(ReconstructedMessage),
     {
         while let Some(msgs) = self.wait_for_messages().await {
             for msg in msgs {

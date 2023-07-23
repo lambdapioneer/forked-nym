@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use nym_sphinx_addressing::clients::Recipient;
 use nym_sphinx_types::{delays, Delay, Node};
+use rand::{CryptoRng, RngCore};
 use thiserror::Error;
 
 pub trait SphinxRouteMaker {
@@ -49,5 +50,13 @@ pub fn generate_hop_delays(average_packet_delay: Duration, num_hops: usize) -> V
         vec![nym_sphinx_types::Delay::new_from_millis(0); num_hops]
     } else {
         delays::generate_from_average_duration(num_hops, average_packet_delay)
+    }
+}
+
+pub fn generate_from_average_duration_with_rng<R>(average_packet_delay: Duration, num_hops: usize, rng: &mut R) -> Vec<Delay> where R: CryptoRng + RngCore {
+    if average_packet_delay.is_zero() {
+        vec![nym_sphinx_types::Delay::new_from_millis(0); num_hops]
+    } else {
+        delays::generate_from_average_duration_with_rng(num_hops, average_packet_delay, rng)
     }
 }

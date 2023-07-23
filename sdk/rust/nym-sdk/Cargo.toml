@@ -7,8 +7,10 @@ edition = "2021"
 
 [dependencies]
 bip39 = { workspace = true }
+bs58 = "0.5.0"
+
 nym-client-core = { path = "../../../common/client-core", features = ["fs-surb-storage"]}
-nym-crypto = { path = "../../../common/crypto" }
+nym-crypto = { path = "../../../common/crypto", features = ["prng"] }
 nym-gateway-requests = { path = "../../../gateway/gateway-requests" }
 nym-bandwidth-controller = { path = "../../../common/bandwidth-controller" }
 nym-credentials = { path = "../../../common/credentials" }

@@ -1,6 +1,7 @@
 // Copyright 2022 - Nym Technologies SA <contact@nymtech.net>
 // SPDX-License-Identifier: Apache-2.0
 
+use std::io::Read;
 use nym_crypto::aes::cipher::{KeyIvInit, StreamCipher};
 use nym_crypto::asymmetric::encryption;
 use nym_crypto::shared_key::new_ephemeral_shared_key;
@@ -64,6 +65,19 @@ impl NymPayloadBuilder {
         self.build::<ReplySurbEncryptionAlgorithm>(
             packet_encryption_key.inner(),
             key_digest.into_iter(),
+        )
+    }
+
+    pub fn build_external_reply(
+        self,
+        packet_encryption_key: &SurbEncryptionKey,
+    ) -> Result<NymPayload, SurbAckRecoveryError> {
+        // TODO: !!! THIS IS INSECURE AND NEEDS REPLACING !!! (simply includes the encryption key)
+        let mut key_digest_like: Vec<u8> = [0u8;16].into_iter().chain( packet_encryption_key.to_bytes()).collect();
+
+        self.build::<ReplySurbEncryptionAlgorithm>(
+            packet_encryption_key.inner(),
+            key_digest_like.into_iter(),
         )
     }
 

@@ -318,6 +318,16 @@ impl<R: MessageReceiver> ReceivedMessagesBuffer<R> {
 
         let possible_key_digest =
             EncryptionKeyDigest::clone_from_slice(&raw_message[..reply_surb_digest_size]);
+
+        // if it starts with 16 0x00, then we use a locally included encryption key
+        // TODO: !!! THIS IS INSECURE AND NEEDS REPLACING !!!
+        if possible_key_digest[..16] == [0u8;16] {
+            return Some((
+                SurbEncryptionKey::try_from_bytes(&raw_message[16..32]).unwrap(),
+                &mut raw_message[reply_surb_digest_size..],
+            ));
+        }
+
         self.reply_key_storage
             .try_pop(possible_key_digest)
             .map(|reply_encryption_key| {

@@ -83,8 +83,6 @@ impl ReplySurb {
         packet_size.plaintext_size() - ack_overhead - ReplySurbKeyDigestAlgorithm::output_size() - 1
     }
 
-    // TODO: should this return `ReplySURBError` for consistency sake
-    // or keep `NymTopologyError` because it's the only error it can actually return?
     pub fn construct<R>(
         rng: &mut R,
         recipient: &Recipient,
@@ -96,15 +94,18 @@ impl ReplySurb {
     {
         let route =
             topology.random_route_to_gateway(rng, DEFAULT_NUM_MIX_HOPS, recipient.gateway())?;
-        let delays = nym_sphinx_routing::generate_hop_delays(average_delay, route.len());
+        let delays = nym_sphinx_routing::generate_from_average_duration_with_rng(average_delay, route.len(), rng);
         let destination = recipient.as_sphinx_destination();
 
         let surb_material = SURBMaterial::new(route, delays, destination);
 
+        let surb = surb_material.construct_SURB_with_rng(rng).unwrap();
+        let encryption_key = SurbEncryptionKey::new(rng);
+
         // this can't fail as we know we have a valid route to gateway and have correct number of delays
         Ok(ReplySurb {
-            surb: surb_material.construct_SURB().unwrap(),
-            encryption_key: SurbEncryptionKey::new(rng),
+            surb,
+            encryption_key,
         })
     }
 
