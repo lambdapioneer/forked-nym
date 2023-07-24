@@ -1,24 +1,27 @@
 // Copyright 2021-2023 - Nym Technologies SA <contact@nymtech.net>
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::message::{NymMessage, ACK_OVERHEAD, OUTFOX_ACK_OVERHEAD};
-use crate::NymPayloadBuilder;
+use std::convert::TryFrom;
+use std::time::Duration;
+
+use rand::{CryptoRng, Rng};
+
 use nym_crypto::asymmetric::encryption;
 use nym_crypto::Digest;
-use nym_sphinx_acknowledgements::surb_ack::SurbAck;
 use nym_sphinx_acknowledgements::AckKey;
+use nym_sphinx_acknowledgements::surb_ack::SurbAck;
 use nym_sphinx_addressing::clients::Recipient;
 use nym_sphinx_addressing::nodes::NymNodeRoutingAddress;
 use nym_sphinx_anonymous_replies::reply_surb::ReplySurb;
 use nym_sphinx_chunking::fragment::{Fragment, FragmentIdentifier};
 use nym_sphinx_forwarding::packet::MixPacket;
+use nym_sphinx_params::{DEFAULT_NUM_MIX_HOPS, PacketType, ReplySurbKeyDigestAlgorithm};
 use nym_sphinx_params::packet_sizes::PacketSize;
-use nym_sphinx_params::{PacketType, ReplySurbKeyDigestAlgorithm, DEFAULT_NUM_MIX_HOPS};
 use nym_sphinx_types::{Delay, NymPacket};
 use nym_topology::{NymTopology, NymTopologyError};
-use rand::{CryptoRng, Rng};
-use std::convert::TryFrom;
-use std::time::Duration;
+
+use crate::message::{ACK_OVERHEAD, NymMessage, OUTFOX_ACK_OVERHEAD};
+use crate::NymPayloadBuilder;
 
 pub(crate) mod payload;
 
@@ -35,6 +38,18 @@ pub struct PreparedFragment {
 
     /// Identifier to uniquely identify a fragment.
     pub fragment_identifier: FragmentIdentifier,
+}
+
+pub enum SurbOrigin {
+    /// A regular SURB using the normal Nym procedure: it is created by the eventual destination
+    /// and encrypted under a key that the destination has in their database; key selection happens
+    /// via a digest at the beginning of the message
+    SourceCreated,
+
+    /// A SURB that has been created by a third-party. Hence the destination cannot know its
+    /// encryption key. Instead, an ephemeral X25519 is included to derive a shared secret. It
+    /// starts with [0u8;8] bytes.
+    External,
 }
 
 impl From<PreparedFragment> for MixPacket {
@@ -109,6 +124,7 @@ pub trait FragmentPreparer {
         reply_surb: ReplySurb,
         packet_sender: &Recipient,
         packet_type: PacketType,
+        surb_origin: SurbOrigin,
     ) -> Result<PreparedFragment, NymTopologyError> {
         // each reply attaches the digest of the encryption key so that the recipient could
         // lookup correct key for decryption,
@@ -141,9 +157,12 @@ pub trait FragmentPreparer {
         )?;
         let ack_delay = surb_ack.expected_total_delay();
 
-        let packet_payload = match NymPayloadBuilder::new(fragment, surb_ack)
-            .build_reply(reply_surb.encryption_key())
-        {
+        let maybe_packet_payload = match surb_origin {
+            SurbOrigin::SourceCreated => NymPayloadBuilder::new(fragment, surb_ack).build_reply(reply_surb.encryption_key()),
+            SurbOrigin::External => NymPayloadBuilder::new(fragment, surb_ack).build_external_reply(reply_surb.encryption_key()),
+        };
+
+        let packet_payload = match maybe_packet_payload {
             Ok(payload) => payload,
             Err(_e) => return Err(NymTopologyError::PayloadBuilder),
         };
@@ -313,8 +332,8 @@ pub struct MessagePreparer<R> {
 }
 
 impl<R> MessagePreparer<R>
-where
-    R: CryptoRng + Rng,
+    where
+        R: CryptoRng + Rng,
 {
     pub fn new(
         rng: R,
@@ -368,6 +387,7 @@ where
         ack_key: &AckKey,
         reply_surb: ReplySurb,
         packet_type: PacketType,
+        surb_origin: SurbOrigin,
     ) -> Result<PreparedFragment, NymTopologyError> {
         let sender = self.sender_address;
 
@@ -379,6 +399,7 @@ where
             reply_surb,
             &sender,
             packet_type,
+            surb_origin,
         )
     }
 

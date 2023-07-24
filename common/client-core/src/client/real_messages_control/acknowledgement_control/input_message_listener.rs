@@ -12,6 +12,7 @@ use nym_sphinx::forwarding::packet::MixPacket;
 use nym_sphinx::params::PacketType;
 use nym_task::connections::TransmissionLane;
 use rand::{CryptoRng, Rng};
+use nym_sphinx::anonymous_replies::ReplySurb;
 
 /// Module responsible for dealing with the received messages: splitting them, creating acknowledgements,
 /// putting everything into sphinx packets, etc.
@@ -67,6 +68,19 @@ where
             .send_reply(recipient_tag, data, lane)
     }
 
+    async fn handle_message_with_supplied_surb(
+        &mut self,
+        surb: ReplySurb,
+        data: Vec<u8>,
+        lane: TransmissionLane,
+        packet_type: PacketType,
+    ) {
+        self
+            .message_handler
+            .try_send_message_with_supplied_surb(surb, data, lane, packet_type)
+            .await
+    }
+
     async fn handle_plain_message(
         &mut self,
         recipient: Recipient,
@@ -102,6 +116,13 @@ where
 
     async fn on_input_message(&mut self, msg: InputMessage) {
         match msg {
+            InputMessage::WithSuppliedSurb {
+                surb,
+                data,
+                lane,
+            } => {
+                self.handle_message_with_supplied_surb(surb, data, lane, PacketType::Mix).await;
+            }
             InputMessage::Regular {
                 recipient,
                 data,
@@ -131,6 +152,13 @@ where
                 message,
                 packet_type,
             } => match *message {
+                InputMessage::WithSuppliedSurb {
+                    surb,
+                    data,
+                    lane,
+                } => {
+                    self.handle_message_with_supplied_surb(surb, data, lane, packet_type).await;
+                }
                 InputMessage::Regular {
                     recipient,
                     data,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use nym_sphinx::addressing::clients::Recipient;
+use nym_sphinx::anonymous_replies::ReplySurb;
 use nym_sphinx::anonymous_replies::requests::AnonymousSenderTag;
 use nym_sphinx::forwarding::packet::MixPacket;
 use nym_sphinx::params::PacketType;
@@ -12,6 +13,13 @@ pub type InputMessageReceiver = tokio::sync::mpsc::Receiver<InputMessage>;
 
 #[derive(Debug)]
 pub enum InputMessage {
+    /// Sends a message using the supplied Surb
+    WithSuppliedSurb {
+        surb: ReplySurb,
+        data: Vec<u8>,
+        lane: TransmissionLane,
+    },
+
     /// Fire an already prepared mix packets into the network.
     /// No guarantees are made about it. For example no retransmssion
     /// will be attempted if it gets dropped.
@@ -144,6 +152,7 @@ impl InputMessage {
             | InputMessage::Anonymous { lane, .. }
             | InputMessage::Reply { lane, .. }
             | InputMessage::Premade { lane, .. } => lane,
+            | InputMessage::WithSuppliedSurb { lane, .. } => lane,
             InputMessage::MessageWrapper { message, .. } => message.lane(),
         }
     }

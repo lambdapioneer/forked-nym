@@ -404,7 +404,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b30ed1d6f8437a487a266c8293aeb95b61a23261273e3e02912cdb8b68bf798b"
 dependencies = [
- "bs58",
+ "bs58 0.4.0",
  "hmac 0.12.1",
  "k256",
  "once_cell",
@@ -542,6 +542,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "771fe0050b883fcc3ea2359b1a96bcfbc090b7116eae7c3c512c7a083fdf23d3"
 dependencies = [
  "sha2 0.9.9",
+]
+
+[[package]]
+name = "bs58"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5353f36341f7451062466f0b755b96ac3a9547e4d7f6b70d603fc721a7d7896"
+dependencies = [
+ "tinyvec",
 ]
 
 [[package]]
@@ -3405,7 +3414,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bip39",
- "bs58",
+ "bs58 0.4.0",
  "cfg-if",
  "clap 4.2.7",
  "console-subscriber",
@@ -3472,7 +3481,7 @@ dependencies = [
 name = "nym-api-requests"
 version = "0.1.0"
 dependencies = [
- "bs58",
+ "bs58 0.4.0",
  "cosmrs",
  "cosmwasm-std",
  "getset",
@@ -3542,7 +3551,7 @@ dependencies = [
  "anyhow",
  "base64 0.13.1",
  "bip39",
- "bs58",
+ "bs58 0.4.0",
  "clap 4.2.7",
  "clap_complete",
  "clap_complete_fig",
@@ -3565,7 +3574,7 @@ version = "1.0.0"
 dependencies = [
  "base64 0.13.1",
  "bip39",
- "bs58",
+ "bs58 0.4.0",
  "cfg-if",
  "clap 4.2.7",
  "comfy-table",
@@ -3697,7 +3706,7 @@ name = "nym-coconut"
 version = "0.5.0"
 dependencies = [
  "bls12_381 0.6.0",
- "bs58",
+ "bs58 0.4.0",
  "criterion",
  "digest 0.9.0",
  "doc-comment",
@@ -3741,7 +3750,7 @@ dependencies = [
 name = "nym-coconut-interface"
 version = "0.1.0"
 dependencies = [
- "bs58",
+ "bs58 0.4.0",
  "getset",
  "nym-coconut",
  "serde",
@@ -3765,7 +3774,7 @@ dependencies = [
 name = "nym-contracts-common"
 version = "0.5.0"
 dependencies = [
- "bs58",
+ "bs58 0.4.0",
  "cosmwasm-std",
  "schemars",
  "serde",
@@ -3824,7 +3833,7 @@ version = "0.4.0"
 dependencies = [
  "aes 0.8.2",
  "blake3",
- "bs58",
+ "bs58 0.4.0",
  "cipher 0.4.4",
  "ctr 0.9.2",
  "digest 0.10.6",
@@ -3836,6 +3845,7 @@ dependencies = [
  "nym-sphinx-types",
  "rand 0.7.3",
  "rand_chacha 0.2.2",
+ "rand_seeder",
  "serde",
  "serde_bytes",
  "subtle-encoding",
@@ -3850,7 +3860,7 @@ version = "0.1.0"
 dependencies = [
  "bitvec",
  "bls12_381 0.6.0",
- "bs58",
+ "bs58 0.4.0",
  "criterion",
  "ff 0.11.1",
  "group 0.11.0",
@@ -3883,7 +3893,7 @@ dependencies = [
  "async-trait",
  "atty",
  "bip39",
- "bs58",
+ "bs58 0.4.0",
  "clap 4.2.7",
  "colored",
  "dashmap 4.0.2",
@@ -3960,7 +3970,7 @@ dependencies = [
 name = "nym-gateway-requests"
 version = "0.1.0"
 dependencies = [
- "bs58",
+ "bs58 0.4.0",
  "futures",
  "generic-array 0.14.7",
  "log",
@@ -4013,7 +4023,7 @@ dependencies = [
 name = "nym-mixnet-contract-common"
 version = "0.6.0"
 dependencies = [
- "bs58",
+ "bs58 0.4.0",
  "cosmwasm-std",
  "humantime-serde",
  "log",
@@ -4033,7 +4043,7 @@ name = "nym-mixnode"
 version = "1.1.24"
 dependencies = [
  "anyhow",
- "bs58",
+ "bs58 0.4.0",
  "cfg-if",
  "clap 4.2.7",
  "colored",
@@ -4151,7 +4161,7 @@ dependencies = [
  "anyhow",
  "async-file-watcher",
  "async-trait",
- "bs58",
+ "bs58 0.4.0",
  "clap 4.2.7",
  "dirs 4.0.0",
  "futures",
@@ -4294,6 +4304,7 @@ name = "nym-sdk"
 version = "0.1.0"
 dependencies = [
  "bip39",
+ "bs58 0.5.0",
  "dotenvy",
  "futures",
  "log",
@@ -4515,7 +4526,7 @@ dependencies = [
 name = "nym-sphinx-anonymous-replies"
 version = "0.1.0"
 dependencies = [
- "bs58",
+ "bs58 0.4.0",
  "nym-crypto",
  "nym-sphinx-addressing",
  "nym-sphinx-params",
@@ -4596,6 +4607,7 @@ version = "0.1.0"
 dependencies = [
  "nym-sphinx-addressing",
  "nym-sphinx-types",
+ "rand 0.7.3",
  "thiserror",
 ]
 
@@ -4654,7 +4666,7 @@ name = "nym-topology"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "bs58",
+ "bs58 0.4.0",
  "log",
  "nym-bin-common",
  "nym-crypto",
@@ -6599,7 +6611,7 @@ dependencies = [
  "aes 0.7.5",
  "arrayref",
  "blake2 0.8.1",
- "bs58",
+ "bs58 0.4.0",
  "byteorder",
  "chacha",
  "curve25519-dalek",
