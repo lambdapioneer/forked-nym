@@ -69,6 +69,11 @@ pub use nym_sphinx::{
     },
     anonymous_replies::requests::AnonymousSenderTag,
     receiver::ReconstructedMessage,
+    anonymous_replies::ReplySurb,
+};
+pub use nym_crypto::asymmetric::{
+    encryption::KeyPair as EncryptionKeyPair, 
+    identity::KeyPair as IdentityKeyPair,
 };
 pub use nym_topology::{provider_trait::TopologyProvider, NymTopology};
 pub use paths::StoragePaths;
