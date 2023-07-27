@@ -328,13 +328,12 @@ impl<R> MessageHandler<R>
         let packet_size = self.optimal_packet_size(&msg);
         debug!("Using {packet_size} packets for {msg}");
 
-        let mut fragments = self
+        let fragments = self
             .message_preparer
             .pad_and_split_message(msg, packet_size);
 
         let mut real_messages = vec![];
         let mut pending_acks = vec![];
-
 
         for (reply_surb, fragment) in zip(reply_surbs.into_iter(), fragments.into_iter()) {
             let chunk_clone = fragment.clone();
