@@ -68,16 +68,16 @@ where
             .send_reply(recipient_tag, data, lane)
     }
 
-    async fn handle_message_with_supplied_surb(
+    async fn handle_message_with_supplied_surbs(
         &mut self,
-        surb: ReplySurb,
+        surbs: Vec<ReplySurb>,
         data: Vec<u8>,
         lane: TransmissionLane,
         packet_type: PacketType,
     ) {
         self
             .message_handler
-            .try_send_message_with_supplied_surb(surb, data, lane, packet_type)
+            .try_send_message_with_supplied_surbs(surbs, data, lane, packet_type)
             .await
     }
 
@@ -116,12 +116,12 @@ where
 
     async fn on_input_message(&mut self, msg: InputMessage) {
         match msg {
-            InputMessage::WithSuppliedSurb {
-                surb,
+            InputMessage::WithSuppliedSurbs {
+                surbs,
                 data,
                 lane,
             } => {
-                self.handle_message_with_supplied_surb(surb, data, lane, PacketType::Mix).await;
+                self.handle_message_with_supplied_surbs(surbs, data, lane, PacketType::Mix).await;
             }
             InputMessage::Regular {
                 recipient,
@@ -152,12 +152,12 @@ where
                 message,
                 packet_type,
             } => match *message {
-                InputMessage::WithSuppliedSurb {
-                    surb,
+                InputMessage::WithSuppliedSurbs {
+                    surbs,
                     data,
                     lane,
                 } => {
-                    self.handle_message_with_supplied_surb(surb, data, lane, packet_type).await;
+                    self.handle_message_with_supplied_surbs(surbs, data, lane, packet_type).await;
                 }
                 InputMessage::Regular {
                     recipient,

@@ -85,6 +85,13 @@ impl MixnetClient {
     }
 
     pub async fn create_surb(&self, destination: &Recipient, nonce: Vec<u8>) -> Option<ReplySurb> {
+        return match self.create_surbs(destination, nonce, 1).await {
+            None => None,
+            Some(mut surbs) => Some(surbs.remove(0)),
+        };
+    }
+
+    pub async fn create_surbs(&self, destination: &Recipient, nonce: Vec<u8>, num: u32) -> Option<Vec<ReplySurb>> {
         let topology_permit = self.client_state.topology_accessor.get_read_permit().await;
         let topology_ref_option = topology_permit.as_ref();
         if topology_ref_option.is_none() {
@@ -92,12 +99,21 @@ impl MixnetClient {
             return None;
         }
 
-        return ReplySurb::construct(
-            &mut DeterministicPRNG::from_nonce(nonce.to_owned()),
-            &destination,
-            self.config.traffic.average_packet_delay,
-            topology_ref_option.as_ref().unwrap(),
-        ).ok();
+        let rng = &mut DeterministicPRNG::from_nonce(nonce.to_owned());
+
+        let mut result = vec![];
+
+        for _ in 0..num {
+            let surb = ReplySurb::construct(
+                rng,
+                &destination,
+                self.config.traffic.average_packet_delay,
+                topology_ref_option.as_ref().unwrap(),
+            ).unwrap();
+            result.push(surb);
+        }
+
+        return Some(result);
     }
 
     /// Get a shallow clone of [`ConnectionCommandSender`]. This is useful if you want to e.g
@@ -196,19 +212,19 @@ impl MixnetClient {
 
     pub async fn send_str_with_surb(
         &self,
-        surb: ReplySurb,
+        surbs: Vec<ReplySurb>,
         message: &str,
     ) {
-        self.send_bytes_with_surb(surb, message).await;
+        self.send_bytes_with_surbs(surbs, message).await;
     }
 
-    pub async fn send_bytes_with_surb<M: AsRef<[u8]>>(
+    pub async fn send_bytes_with_surbs<M: AsRef<[u8]>>(
         &self,
-        surb: ReplySurb,
+        surbs: Vec<ReplySurb>,
         message: M,
     ) {
-        self.send(InputMessage::WithSuppliedSurb {
-            surb,
+        self.send(InputMessage::WithSuppliedSurbs {
+            surbs,
             data: Vec::from(message.as_ref()),
             lane: TransmissionLane::General,
         }).await;
