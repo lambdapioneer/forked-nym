@@ -1,4 +1,5 @@
 use futures::StreamExt;
+use rand::rngs::OsRng;
 
 use nym_client_core::client::{
     base_client::{ClientInput, ClientOutput, ClientState},
@@ -8,9 +9,14 @@ use nym_client_core::client::{
 use nym_client_core::config::DebugConfig;
 use nym_crypto::deterministic_prng::DeterministicPRNG;
 use nym_sphinx::{params::PacketType, receiver::ReconstructedMessage};
+use nym_sphinx::acknowledgements::AckKey;
 use nym_sphinx::addressing::clients::Recipient;
 use nym_sphinx::anonymous_replies::ReplySurb;
 use nym_sphinx::anonymous_replies::requests::AnonymousSenderTag;
+use nym_sphinx::forwarding::packet::MixPacket;
+use nym_sphinx::message::NymMessage;
+use nym_sphinx::params::PacketSize;
+use nym_sphinx::preparer::MessagePreparer;
 use nym_task::{
     connections::{ConnectionCommandSender, LaneQueueLengths, TransmissionLane},
     TaskManager,
@@ -46,6 +52,7 @@ pub struct MixnetClient {
     pub(crate) packet_type: Option<PacketType>,
     pub(crate) config: DebugConfig,
 }
+
 
 impl MixnetClient {
     /// Create a new client and connect to the mixnet using ephemeral in-memory keys that are
@@ -114,6 +121,54 @@ impl MixnetClient {
         }
 
         return Some(result);
+    }
+
+    pub async fn create_mix_packet<M: AsRef<[u8]>>(
+        &mut self,
+        message: M,
+        recipient: &Recipient,
+    ) -> Option<Vec<MixPacket>> {
+        let topology_permit = self.client_state.topology_accessor.get_read_permit().await;
+        let topology_ref_option = topology_permit.as_ref();
+        if topology_ref_option.is_none() {
+            log::warn!("No valid topology available");
+            return None;
+        }
+        let topology = topology_ref_option.as_ref().unwrap();
+
+        let rng = &mut OsRng;
+        let mut message_preparer = MessagePreparer::new(
+            rng,
+            self.nym_address,
+            self.config.traffic.average_packet_delay,
+            self.config.acknowledgements.average_ack_delay,
+        )
+            .with_mix_hops(3);
+
+        let packet_size = PacketSize::RegularPacket;
+        let message = NymMessage::new_plain(message.as_ref().to_vec());
+        let fragments = message_preparer.pad_and_split_message(message, packet_size);
+
+        let mut mix_packets = Vec::with_capacity(fragments.len());
+
+        for fragment in fragments {
+            let chunk_clone = fragment.clone();
+
+            // Since we have no way to handle the acks anyway, we choose a random key
+            let ack_key = AckKey::new(&mut OsRng);
+
+            let prepared_fragment = message_preparer.prepare_chunk_for_sending(
+                chunk_clone,
+                topology,
+                &ack_key,
+                &recipient,
+                PacketType::Mix,
+            ).unwrap();
+
+            mix_packets.push(prepared_fragment.mix_packet);
+        }
+
+        return Some(mix_packets);
     }
 
     /// Get a shallow clone of [`ConnectionCommandSender`]. This is useful if you want to e.g
@@ -281,6 +336,10 @@ impl MixnetClient {
         if self.client_input.send(message).await.is_err() {
             log::error!("Failed to send message");
         }
+    }
+
+    pub async fn send_packets(&self, packets: Vec<MixPacket>) {
+        self.send(InputMessage::Premade { msgs: packets, lane: TransmissionLane::General }).await
     }
 
     /// Sends a [`InputMessage`] to the mixnet. This is the most low-level sending function, for
