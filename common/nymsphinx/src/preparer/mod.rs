@@ -40,6 +40,7 @@ pub struct PreparedFragment {
     pub fragment_identifier: FragmentIdentifier,
 }
 
+#[derive(Clone, Copy)]
 pub enum SurbOrigin {
     /// A regular SURB using the normal Nym procedure: it is created by the eventual destination
     /// and encrypted under a key that the destination has in their database; key selection happens

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::collections::HashMap;
+use std::iter::zip;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -315,6 +316,55 @@ impl<R> MessageHandler<R>
         Ok(())
     }
 
+    pub(crate) async fn try_send_multisurb_message(
+        &mut self,
+        target: AnonymousSenderTag,
+        message: ReplyMessage,
+        reply_surbs: Vec<ReplySurb>,
+        is_extra_surb_request: bool,
+        surb_origin: SurbOrigin,
+    ) -> Result<(), SurbWrappedPreparationError> {
+        let msg = NymMessage::new_reply(message);
+        let packet_size = self.optimal_packet_size(&msg);
+        debug!("Using {packet_size} packets for {msg}");
+
+        let mut fragments = self
+            .message_preparer
+            .pad_and_split_message(msg, packet_size);
+
+        let mut real_messages = vec![];
+        let mut pending_acks = vec![];
+
+
+        for (reply_surb, fragment) in zip(reply_surbs.into_iter(), fragments.into_iter()) {
+            let chunk_clone = fragment.clone();
+            let prepared_fragment = self
+                .try_prepare_single_reply_chunk_for_sending(reply_surb, chunk_clone, surb_origin)
+                .await?;
+
+            let real_message = RealMessage::new(
+                prepared_fragment.mix_packet,
+                Some(fragment.fragment_identifier()),
+            );
+            real_messages.push(real_message);
+
+            let delay = prepared_fragment.total_delay;
+            let pending_ack =
+                PendingAcknowledgement::new_anonymous(fragment, delay, target, is_extra_surb_request);
+            pending_acks.push(pending_ack);
+        }
+
+        let lane = if is_extra_surb_request {
+            TransmissionLane::ReplySurbRequest
+        } else {
+            TransmissionLane::General
+        };
+
+        self.forward_messages(real_messages, lane).await;
+        self.insert_pending_acks(pending_acks);
+        Ok(())
+    }
+
     pub(crate) async fn try_request_additional_reply_surbs(
         &mut self,
         from: AnonymousSenderTag,
@@ -485,16 +535,16 @@ impl<R> MessageHandler<R>
         Ok(())
     }
 
-    pub(crate) async fn try_send_message_with_supplied_surb(
+    pub(crate) async fn try_send_message_with_supplied_surbs(
         &mut self,
-        surb: ReplySurb,
+        surbs: Vec<ReplySurb>,
         message: Vec<u8>,
         _lane: TransmissionLane,
         _packet_type: PacketType,
     ) {
         let reply_message = ReplyMessage::new_data_message(message);
         let target_tag = AnonymousSenderTag::new_random(&mut OsRng);
-        self.try_send_single_surb_message(target_tag, reply_message, surb, false, SurbOrigin::External).await.unwrap()
+        self.try_send_multisurb_message(target_tag, reply_message, surbs, false, SurbOrigin::External).await.unwrap()
     }
 
     pub(crate) async fn try_send_additional_reply_surbs(

@@ -13,9 +13,9 @@ pub type InputMessageReceiver = tokio::sync::mpsc::Receiver<InputMessage>;
 
 #[derive(Debug)]
 pub enum InputMessage {
-    /// Sends a message using the supplied Surb
-    WithSuppliedSurb {
-        surb: ReplySurb,
+    /// Sends a message using the supplied Surbs
+    WithSuppliedSurbs {
+        surbs: Vec<ReplySurb>,
         data: Vec<u8>,
         lane: TransmissionLane,
     },
@@ -152,7 +152,7 @@ impl InputMessage {
             | InputMessage::Anonymous { lane, .. }
             | InputMessage::Reply { lane, .. }
             | InputMessage::Premade { lane, .. } => lane,
-            | InputMessage::WithSuppliedSurb { lane, .. } => lane,
+            | InputMessage::WithSuppliedSurbs { lane, .. } => lane,
             InputMessage::MessageWrapper { message, .. } => message.lane(),
         }
     }
