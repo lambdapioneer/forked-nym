@@ -6,6 +6,7 @@ use nym_client_core::client::{
     inbound_messages::InputMessage,
     received_buffer::ReconstructedMessagesReceiver,
 };
+use nym_client_core::client::base_client::ClientSecrets;
 use nym_client_core::config::DebugConfig;
 use nym_crypto::deterministic_prng::DeterministicPRNG;
 use nym_sphinx::{params::PacketType, receiver::ReconstructedMessage};
@@ -51,6 +52,8 @@ pub struct MixnetClient {
     pub(crate) task_manager: TaskManager,
     pub(crate) packet_type: Option<PacketType>,
     pub(crate) config: DebugConfig,
+
+    pub(crate) client_secrets: ClientSecrets,
 }
 
 
@@ -81,6 +84,11 @@ impl MixnetClient {
     /// client identity, the client encryption key, and the gateway identity.
     pub fn nym_address(&self) -> &Recipient {
         &self.nym_address
+    }
+
+    /// With great power comes great responsibility 👀
+    pub fn get_secrets(&self) -> &ClientSecrets {
+        return &self.client_secrets
     }
 
     /// Get a shallow clone of [`MixnetClientSender`]. Useful if you want split the send and

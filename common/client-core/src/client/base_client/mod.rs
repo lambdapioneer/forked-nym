@@ -597,6 +597,11 @@ impl<'a, C, S> BaseClientBuilder<'a, C, S>
         debug!("Core client startup finished!");
         debug!("The address of this client is: {self_address}");
 
+        let client_secrets = ClientSecrets {
+            identity_keypair: managed_keys.identity_keypair(),
+            encryption_keypair: managed_keys.encryption_keypair(),
+        };
+
         Ok(BaseClient {
             address: self_address,
             client_input: ClientInputStatus::AwaitingProducer {
@@ -616,8 +621,16 @@ impl<'a, C, S> BaseClientBuilder<'a, C, S>
                 topology_accessor: shared_topology_accessor,
             },
             task_manager,
+            client_secrets
         })
     }
+}
+
+/// Exposing the client secrets for custom protocols that re-use them
+#[derive(Clone)]
+pub struct ClientSecrets {
+    pub identity_keypair: Arc<identity::KeyPair>,
+    pub encryption_keypair: Arc<encryption::KeyPair>,
 }
 
 pub struct BaseClient {
@@ -627,4 +640,5 @@ pub struct BaseClient {
     pub client_state: ClientState,
 
     pub task_manager: TaskManager,
+    pub client_secrets: ClientSecrets,
 }

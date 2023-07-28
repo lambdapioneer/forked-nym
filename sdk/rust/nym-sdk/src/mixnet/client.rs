@@ -491,13 +491,15 @@ where
         }
         let config = self.config.debug_config.clone();
 
+
         let (mut started_client, nym_address) = self.connect_to_mixnet_common().await?;
         let client_input = started_client.client_input.register_producer();
         let mut client_output = started_client.client_output.register_consumer();
         let client_state = started_client.client_state;
 
-        let reconstructed_receiver = client_output.register_receiver()?;
+        let client_secrets = started_client.client_secrets.clone();
 
+        let reconstructed_receiver = client_output.register_receiver()?;
         Ok(MixnetClient {
             nym_address,
             client_input,
@@ -507,6 +509,7 @@ where
             task_manager: started_client.task_manager,
             packet_type: None,
             config,
+            client_secrets,
         })
     }
 }
