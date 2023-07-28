@@ -102,7 +102,7 @@ impl PemStorableKeyPair for KeyPair {
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
-pub struct PublicKey(x25519_dalek::PublicKey);
+pub struct PublicKey(pub x25519_dalek::PublicKey);
 
 impl Display for PublicKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -186,7 +186,7 @@ impl PemStorableKey for PublicKey {
 }
 
 #[derive(Zeroize, ZeroizeOnDrop)]
-pub struct PrivateKey(x25519_dalek::StaticSecret);
+pub struct PrivateKey(pub x25519_dalek::StaticSecret);
 
 impl Display for PrivateKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
