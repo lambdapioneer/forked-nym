@@ -12,4 +12,8 @@ async fn main() {
 
     let secrets = client.get_secrets();
     println!("Our identity keypair: {:?}", secrets.identity_keypair.deref());
+
+    // The encryption keypair uses the `x25519_dalek` crate which does not like `Debug`
+    println!("Our encryption public key: {:?}", secrets.encryption_keypair.public_key().to_base58_string());
+    println!("Our encryption secret key: {:?}", secrets.encryption_keypair.private_key().to_base58_string());
 }
