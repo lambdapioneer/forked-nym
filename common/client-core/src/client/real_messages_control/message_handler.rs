@@ -332,6 +332,10 @@ impl<R> MessageHandler<R>
             .message_preparer
             .pad_and_split_message(msg, packet_size);
 
+        if fragments.len() > reply_surbs.len() {
+            panic!{"message ({} fragments) to long for reply surbs (amount {})!", fragments.len(), reply_surbs.len()}
+        }
+
         let mut real_messages = vec![];
         let mut pending_acks = vec![];
 
