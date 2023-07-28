@@ -566,7 +566,7 @@ where
 
         // if this is retransmission for obtaining additional reply surbs,
         // we can dip below the storage threshold
-        let (maybe_reply_surb, _) = if extra_surbs_request {
+        let x = if extra_surbs_request {
             self.full_reply_storage
                 .surbs_storage_ref()
                 .get_reply_surb_ignoring_threshold(&recipient_tag)
@@ -574,8 +574,14 @@ where
             self.full_reply_storage
                 .surbs_storage_ref()
                 .get_reply_surb(&recipient_tag)
-        }
-        .expect("attempted to retransmit a packet to an unknown recipient - we shouldn't have sent the original packet in the first place!");
+        };
+
+        // TODO: we currently ignore retransmissions for our custom SURBs that are created external
+        //.expect("attempted to retransmit a packet to an unknown recipient - we shouldn't have sent the original packet in the first place!");
+        let Some((maybe_reply_surb, _)) = x
+        else {
+            return;
+        };
 
         if let Some(reply_surb) = maybe_reply_surb {
             match self

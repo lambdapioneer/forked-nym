@@ -207,6 +207,10 @@ impl MixnetClient {
         let message = NymMessage::new_plain(message.as_ref().to_vec());
         let fragments = message_preparer.pad_and_split_message(message, packet_size);
 
+        if fragments.len() > reply_surbs.len() {
+            panic!{"message ({} fragments) to long for reply surbs (amount {})!", fragments.len(), reply_surbs.len()}
+        }
+
         let mut mix_packets = Vec::with_capacity(fragments.len());
 
         for (reply_surb, fragment) in zip(reply_surbs.into_iter(), fragments.into_iter()) {
