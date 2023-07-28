@@ -333,7 +333,7 @@ impl<R> MessageHandler<R>
             .pad_and_split_message(msg, packet_size);
 
         if fragments.len() > reply_surbs.len() {
-            panic!{"message ({} fragments) to long for reply surbs (amount {})!", fragments.len(), reply_surbs.len()}
+            panic!{"message ({} fragments) too long for reply surbs (amount {})!", fragments.len(), reply_surbs.len()}
         }
 
         let mut real_messages = vec![];

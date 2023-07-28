@@ -15,7 +15,7 @@ use nym_sphinx::{params::PacketType, receiver::ReconstructedMessage};
 use nym_sphinx::acknowledgements::AckKey;
 use nym_sphinx::addressing::clients::Recipient;
 use nym_sphinx::anonymous_replies::ReplySurb;
-use nym_sphinx::anonymous_replies::requests::AnonymousSenderTag;
+use nym_sphinx::anonymous_replies::requests::{AnonymousSenderTag, ReplyMessage};
 use nym_sphinx::forwarding::packet::MixPacket;
 use nym_sphinx::message::NymMessage;
 use nym_sphinx::params::PacketSize;
@@ -204,11 +204,14 @@ impl MixnetClient {
             .with_mix_hops(3);
 
         let packet_size = PacketSize::RegularPacket;
-        let message = NymMessage::new_plain(message.as_ref().to_vec());
+
+        let reply_message = ReplyMessage::new_data_message(message.as_ref().to_vec());
+        let message = NymMessage::new_reply(reply_message);
+
         let fragments = message_preparer.pad_and_split_message(message, packet_size);
 
         if fragments.len() > reply_surbs.len() {
-            panic!{"message ({} fragments) to long for reply surbs (amount {})!", fragments.len(), reply_surbs.len()}
+            panic!{"message ({} fragments) too long for reply surbs (amount {})!", fragments.len(), reply_surbs.len()}
         }
 
         let mut mix_packets = Vec::with_capacity(fragments.len());
