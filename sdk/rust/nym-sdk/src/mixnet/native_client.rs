@@ -1,3 +1,5 @@
+use std::iter::zip;
+
 use futures::StreamExt;
 use rand::rngs::OsRng;
 
@@ -17,7 +19,7 @@ use nym_sphinx::anonymous_replies::requests::AnonymousSenderTag;
 use nym_sphinx::forwarding::packet::MixPacket;
 use nym_sphinx::message::NymMessage;
 use nym_sphinx::params::PacketSize;
-use nym_sphinx::preparer::MessagePreparer;
+use nym_sphinx::preparer::{MessagePreparer, SurbOrigin};
 use nym_task::{
     connections::{ConnectionCommandSender, LaneQueueLengths, TransmissionLane},
     TaskManager,
@@ -88,7 +90,7 @@ impl MixnetClient {
 
     /// With great power comes great responsibility 👀
     pub fn get_secrets(&self) -> &ClientSecrets {
-        return &self.client_secrets
+        return &self.client_secrets;
     }
 
     /// Get a shallow clone of [`MixnetClientSender`]. Useful if you want split the send and
@@ -172,6 +174,57 @@ impl MixnetClient {
                 &recipient,
                 PacketType::Mix,
             ).unwrap();
+
+            mix_packets.push(prepared_fragment.mix_packet);
+        }
+
+        return Some(mix_packets);
+    }
+
+    pub async fn create_mix_packet_with_surbs<M: AsRef<[u8]>>(
+        &mut self,
+        message: M,
+        reply_surbs: Vec<ReplySurb>,
+    ) -> Option<Vec<MixPacket>> {
+        let topology_permit = self.client_state.topology_accessor.get_read_permit().await;
+        let topology_ref_option = topology_permit.as_ref();
+        if topology_ref_option.is_none() {
+            log::warn!("No valid topology available");
+            return None;
+        }
+        let topology = topology_ref_option.as_ref().unwrap();
+
+        let rng = &mut OsRng;
+        let mut message_preparer = MessagePreparer::new(
+            rng,
+            self.nym_address,
+            self.config.traffic.average_packet_delay,
+            self.config.acknowledgements.average_ack_delay,
+        )
+            .with_mix_hops(3);
+
+        let packet_size = PacketSize::RegularPacket;
+        let message = NymMessage::new_plain(message.as_ref().to_vec());
+        let fragments = message_preparer.pad_and_split_message(message, packet_size);
+
+        let mut mix_packets = Vec::with_capacity(fragments.len());
+
+        for (reply_surb, fragment) in zip(reply_surbs.into_iter(), fragments.into_iter()) {
+            let chunk_clone = fragment.clone();
+
+            // Since we have no way to handle the acks anyway, we choose a random key
+            let ack_key = AckKey::new(&mut OsRng);
+
+            let prepared_fragment = message_preparer
+                .prepare_reply_chunk_for_sending(
+                    chunk_clone,
+                    topology,
+                    &ack_key,
+                    reply_surb,
+                    PacketType::Mix,
+                    SurbOrigin::External,
+                )
+                .unwrap();
 
             mix_packets.push(prepared_fragment.mix_packet);
         }
