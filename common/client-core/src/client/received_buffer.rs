@@ -9,17 +9,23 @@ use futures::lock::Mutex;
 use futures::StreamExt;
 use log::*;
 use nym_crypto::asymmetric::encryption;
-use nym_crypto::Digest;
+use nym_crypto::asymmetric::encryption::PublicKey;
+use nym_crypto::symmetric::stream_cipher;
+use nym_crypto::symmetric::stream_cipher::CipherKey;
 use nym_gateway_client::MixnetMessageReceiver;
 use nym_sphinx::anonymous_replies::requests::{
     RepliableMessage, RepliableMessageContent, ReplyMessage, ReplyMessageContent,
 };
 use nym_sphinx::anonymous_replies::{encryption_key::EncryptionKeyDigest, SurbEncryptionKey};
 use nym_sphinx::message::{NymMessage, PlainMessage};
-use nym_sphinx::params::ReplySurbKeyDigestAlgorithm;
+use nym_sphinx::params::{SURB_MAX_VARIANT_OVERHEAD, SURB_NORMAL_VARIANT_OVERHEAD};
 use nym_sphinx::receiver::{MessageReceiver, MessageRecoveryError, ReconstructedMessage};
 use std::collections::HashSet;
 use std::sync::Arc;
+
+use nym_crypto::aes;
+use nym_crypto::ctr;
+type Aes128Ctr = ctr::Ctr64LE<aes::Aes128>;
 
 // Buffer Requests to say "hey, send any reconstructed messages to this channel"
 // or to say "hey, I'm going offline, don't send anything more to me. Just buffer them instead"
@@ -310,30 +316,65 @@ impl<R: MessageReceiver> ReceivedMessagesBuffer<R> {
     fn get_reply_key<'a>(
         &self,
         raw_message: &'a mut [u8],
+        local_encryption_key_pair: &Arc<encryption::KeyPair>,
     ) -> Option<(SurbEncryptionKey, &'a mut [u8])> {
-        let reply_surb_digest_size = ReplySurbKeyDigestAlgorithm::output_size();
-        if raw_message.len() < reply_surb_digest_size {
+        if raw_message.len() < SURB_MAX_VARIANT_OVERHEAD {
             return None;
         }
 
-        let possible_key_digest =
-            EncryptionKeyDigest::clone_from_slice(&raw_message[..reply_surb_digest_size]);
+        //
+        // VARIANT: EXTERNAL
+        //
+        // first try to decrypt as an external pudding SURB;
+        // if that fails, we try below to decrypt as a reply
+        //
+        // See: `ReplySurb::build_external_variant_data` for more discussion
 
-        // if it starts with 16 0x00, then we use a locally included encryption key
-        // TODO: !!! THIS IS INSECURE AND NEEDS REPLACING !!!
-        if possible_key_digest[..16] == [0u8;16] {
+        // re-derive the shared secret
+        let possible_ephemeral_public_key = PublicKey::from_bytes(&raw_message[0..32]).unwrap();
+        let local_private_key = local_encryption_key_pair.private_key();
+        let local_public_key = local_encryption_key_pair.public_key();
+        let ephemeral_secret = local_private_key.diffie_hellman(&possible_ephemeral_public_key);
+
+        // recover encryption key from the shared secret
+        let key = CipherKey::<Aes128Ctr>::from_slice(&ephemeral_secret[16..32]);
+
+        // perform the decryption check
+        let possible_decrypted_zeros = stream_cipher::decrypt::<Aes128Ctr>(
+            &key,
+            &stream_cipher::zero_iv::<Aes128Ctr>(), // all zero IV is fine here
+            &raw_message[32..40],
+        );
+        if possible_decrypted_zeros == [0u8; 8] {
+            // if it succeeds we can decrypt the surb encryption key and return it with the rest
+            // of the message
+            let iv = stream_cipher::iv_from_slice::<Aes128Ctr>(&ephemeral_secret[..16]);
+            let surb_encryption_key = SurbEncryptionKey::try_from_bytes(
+                &stream_cipher::decrypt::<Aes128Ctr>(
+                    &key,
+                    &iv,
+                    &raw_message[40..56],
+                )
+            ).unwrap();
             return Some((
-                SurbEncryptionKey::try_from_bytes(&raw_message[16..32]).unwrap(),
-                &mut raw_message[reply_surb_digest_size..],
-            ));
+                surb_encryption_key,
+                &mut raw_message[SURB_MAX_VARIANT_OVERHEAD..],
+            ))
         }
+
+        //
+        // VARIANT: REGULAR
+        //
+
+        let possible_key_digest =
+            EncryptionKeyDigest::clone_from_slice(&raw_message[..SURB_NORMAL_VARIANT_OVERHEAD]);
 
         self.reply_key_storage
             .try_pop(possible_key_digest)
             .map(|reply_encryption_key| {
                 (
                     *reply_encryption_key,
-                    &mut raw_message[reply_surb_digest_size..],
+                    &mut raw_message[SURB_MAX_VARIANT_OVERHEAD..],
                 )
             })
     }
@@ -356,7 +397,7 @@ impl<R: MessageReceiver> ReceivedMessagesBuffer<R> {
             // check first `HasherOutputSize` bytes if they correspond to known encryption key
             // if yes - this is a reply message
             let completed_message =
-                if let Some((reply_key, reply_message)) = self.get_reply_key(&mut msg) {
+                if let Some((reply_key, reply_message)) = self.get_reply_key(&mut msg, &inner_guard.local_encryption_keypair) {
                     inner_guard.process_received_reply(reply_message, reply_key)?
                 } else {
                     inner_guard.process_received_regular_packet(msg)

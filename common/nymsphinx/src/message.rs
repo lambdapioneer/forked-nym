@@ -3,7 +3,6 @@
 
 use crate::chunking;
 use nym_crypto::asymmetric::encryption;
-use nym_crypto::Digest;
 use nym_sphinx_addressing::clients::Recipient;
 use nym_sphinx_addressing::nodes::MAX_NODE_ADDRESS_UNPADDED_LEN;
 use nym_sphinx_anonymous_replies::requests::{
@@ -11,7 +10,7 @@ use nym_sphinx_anonymous_replies::requests::{
     ReplyMessageContent,
 };
 use nym_sphinx_chunking::fragment::Fragment;
-use nym_sphinx_params::{PacketSize, PacketType, ReplySurbKeyDigestAlgorithm};
+use nym_sphinx_params::{PacketSize, PacketType, SURB_MAX_VARIANT_OVERHEAD};
 use rand::Rng;
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
@@ -186,7 +185,9 @@ impl NymMessage {
             NymMessage::Plain(_) | NymMessage::Repliable(_) => encryption::PUBLIC_KEY_SIZE,
             // each reply attaches the digest of the encryption key so that the recipient could
             // lookup correct key for decryption,
-            NymMessage::Reply(_) => ReplySurbKeyDigestAlgorithm::output_size(),
+
+            // TODO FIXME PUDDING: add additional 16 Bytes here!
+            NymMessage::Reply(_) => SURB_MAX_VARIANT_OVERHEAD,
         };
 
         let packet_type = PacketType::from(packet_size);

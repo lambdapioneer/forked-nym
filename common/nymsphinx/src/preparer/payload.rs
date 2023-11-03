@@ -9,15 +9,15 @@ use nym_crypto::symmetric::stream_cipher::CipherKey;
 use nym_sphinx_acknowledgements::surb_ack::{SurbAck, SurbAckRecoveryError};
 use nym_sphinx_anonymous_replies::SurbEncryptionKey;
 use nym_sphinx_chunking::fragment::Fragment;
-use nym_sphinx_params::{
-    PacketEncryptionAlgorithm, PacketHkdfAlgorithm, ReplySurbEncryptionAlgorithm,
-};
+use nym_sphinx_params::{PacketEncryptionAlgorithm, PacketHkdfAlgorithm, ReplySurbEncryptionAlgorithm, SURB_MAX_VARIANT_OVERHEAD, SURB_NORMAL_VARIANT_OVERHEAD};
 use rand::{CryptoRng, RngCore};
+
 
 pub struct NymPayloadBuilder {
     fragment: Fragment,
     surb_ack: SurbAck,
 }
+
 
 impl NymPayloadBuilder {
     pub fn new(fragment: Fragment, surb_ack: SurbAck) -> Self {
@@ -61,22 +61,22 @@ impl NymPayloadBuilder {
         packet_encryption_key: &SurbEncryptionKey,
     ) -> Result<NymPayload, SurbAckRecoveryError> {
         let key_digest = packet_encryption_key.compute_digest();
+        let padding = vec![0u8; SURB_MAX_VARIANT_OVERHEAD - SURB_NORMAL_VARIANT_OVERHEAD];
         self.build::<ReplySurbEncryptionAlgorithm>(
             packet_encryption_key.inner(),
-            key_digest.into_iter(),
+            key_digest.into_iter().chain(padding).collect::<Vec<_>>(),
         )
     }
 
     pub fn build_external_reply(
         self,
         packet_encryption_key: &SurbEncryptionKey,
+        variant_data: &Vec<u8>,
     ) -> Result<NymPayload, SurbAckRecoveryError> {
-        // TODO: !!! THIS IS INSECURE AND NEEDS REPLACING !!! (simply includes the encryption key)
-        let key_digest_like: Vec<u8> = [0u8;16].into_iter().chain( packet_encryption_key.to_bytes()).collect();
-
+        // no padding needed here as we are already the longest variant
         self.build::<ReplySurbEncryptionAlgorithm>(
             packet_encryption_key.inner(),
-            key_digest_like.into_iter(),
+            variant_data.clone(),
         )
     }
 

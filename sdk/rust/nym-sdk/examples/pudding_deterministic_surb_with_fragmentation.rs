@@ -6,7 +6,7 @@ async fn main() {
     nym_bin_common::logging::setup_logging();
 
     // that's Alice: creating the SURBs
-    let mut alice = mixnet::MixnetClient::connect_new().await.unwrap();
+    let alice = mixnet::MixnetClient::connect_new().await.unwrap();
     let alice_address = alice.nym_address();
     println!("alice_address={alice_address}");
 
@@ -16,11 +16,11 @@ async fn main() {
     println!("bob_address={bob_address}");
 
     let many_surbs = alice.create_surbs(bob_address, b"nonce".to_vec(), 10).await.unwrap();
-    let mut many_serialized_surbs: Vec<String> = many_surbs.into_iter().map(|x| x.to_base58_string()).collect();
+    let many_serialized_surbs: Vec<String> = many_surbs.into_iter().map(|x| x.to_base58_string()).collect();
     assert_eq!(many_serialized_surbs.len(), 10);
 
     // that's Charlie: they use our SURBs to send a message
-    let mut charlie = mixnet::MixnetClient::connect_new().await.unwrap();
+    let charlie = mixnet::MixnetClient::connect_new().await.unwrap();
     let charlie_address = charlie.nym_address();
     println!("charlie_address={charlie_address}");
 

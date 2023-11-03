@@ -7,7 +7,6 @@ use std::time::Duration;
 use rand::{CryptoRng, Rng};
 
 use nym_crypto::asymmetric::encryption;
-use nym_crypto::Digest;
 use nym_sphinx_acknowledgements::AckKey;
 use nym_sphinx_acknowledgements::surb_ack::SurbAck;
 use nym_sphinx_addressing::clients::Recipient;
@@ -15,7 +14,7 @@ use nym_sphinx_addressing::nodes::NymNodeRoutingAddress;
 use nym_sphinx_anonymous_replies::reply_surb::ReplySurb;
 use nym_sphinx_chunking::fragment::{Fragment, FragmentIdentifier};
 use nym_sphinx_forwarding::packet::MixPacket;
-use nym_sphinx_params::{DEFAULT_NUM_MIX_HOPS, PacketType, ReplySurbKeyDigestAlgorithm};
+use nym_sphinx_params::{DEFAULT_NUM_MIX_HOPS, PacketType, SURB_MAX_VARIANT_OVERHEAD};
 use nym_sphinx_params::packet_sizes::PacketSize;
 use nym_sphinx_types::{Delay, NymPacket};
 use nym_topology::{NymTopology, NymTopologyError};
@@ -48,8 +47,7 @@ pub enum SurbOrigin {
     SourceCreated,
 
     /// A SURB that has been created by a third-party. Hence the destination cannot know its
-    /// encryption key. Instead, an ephemeral X25519 is included to derive a shared secret. It
-    /// starts with [0u8;8] bytes.
+    /// encryption key. Instead, an ephemeral X25519 is included to derive a shared secret.
     External,
 }
 
@@ -129,7 +127,7 @@ pub trait FragmentPreparer {
     ) -> Result<PreparedFragment, NymTopologyError> {
         // each reply attaches the digest of the encryption key so that the recipient could
         // lookup correct key for decryption,
-        let reply_overhead = ReplySurbKeyDigestAlgorithm::output_size();
+        let reply_overhead = SURB_MAX_VARIANT_OVERHEAD;
         let expected_plaintext = match packet_type {
             PacketType::Outfox => fragment.serialized_size() + OUTFOX_ACK_OVERHEAD + reply_overhead,
             _ => fragment.serialized_size() + ACK_OVERHEAD + reply_overhead,
@@ -160,7 +158,7 @@ pub trait FragmentPreparer {
 
         let maybe_packet_payload = match surb_origin {
             SurbOrigin::SourceCreated => NymPayloadBuilder::new(fragment, surb_ack).build_reply(reply_surb.encryption_key()),
-            SurbOrigin::External => NymPayloadBuilder::new(fragment, surb_ack).build_external_reply(reply_surb.encryption_key()),
+            SurbOrigin::External => NymPayloadBuilder::new(fragment, surb_ack).build_external_reply(reply_surb.encryption_key(), &reply_surb.external_variant_data),
         };
 
         let packet_payload = match maybe_packet_payload {

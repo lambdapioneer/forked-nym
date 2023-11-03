@@ -47,6 +47,11 @@ pub type GatewaySharedKeyHkdfAlgorithm = blake3::Hasher;
 /// Hashing algorithm used when computing digest of a reply SURB encryption key.
 pub type ReplySurbKeyDigestAlgorithm = blake3::Hasher;
 
+pub const SURB_NORMAL_VARIANT_OVERHEAD: usize = 32;
+pub const SURB_PUDDING_VARIANT_OVERHEAD: usize = 32 + 8 + 16;
+pub const SURB_MAX_VARIANT_OVERHEAD: usize = SURB_PUDDING_VARIANT_OVERHEAD;
+
+
 /// Hashing algorithm used when computing integrity (H)Mac for message exchanged between client and gateway.
 // TODO: if updated, the pem type defined in gateway\gateway-requests\src\registration\handshake\shared_key
 // needs updating!
