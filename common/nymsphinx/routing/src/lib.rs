@@ -53,7 +53,14 @@ pub fn generate_hop_delays(average_packet_delay: Duration, num_hops: usize) -> V
     }
 }
 
-pub fn generate_from_average_duration_with_rng<R>(average_packet_delay: Duration, num_hops: usize, rng: &mut R) -> Vec<Delay> where R: CryptoRng + RngCore {
+pub fn generate_from_average_duration_with_rng<R>(
+    average_packet_delay: Duration,
+    num_hops: usize,
+    rng: &mut R,
+) -> Vec<Delay>
+where
+    R: CryptoRng + RngCore,
+{
     if average_packet_delay.is_zero() {
         vec![nym_sphinx_types::Delay::new_from_millis(0); num_hops]
     } else {

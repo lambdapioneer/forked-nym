@@ -7,27 +7,27 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use log::{debug, error, info, trace, warn};
-use rand::{CryptoRng, Rng};
 use rand::rngs::OsRng;
+use rand::{CryptoRng, Rng};
 use thiserror::Error;
 
 use nym_sphinx::acknowledgements::AckKey;
 use nym_sphinx::addressing::clients::Recipient;
-use nym_sphinx::anonymous_replies::{ReplySurb, SurbEncryptionKey};
 use nym_sphinx::anonymous_replies::requests::{AnonymousSenderTag, RepliableMessage, ReplyMessage};
+use nym_sphinx::anonymous_replies::{ReplySurb, SurbEncryptionKey};
 use nym_sphinx::chunking::fragment::{Fragment, FragmentIdentifier};
-use nym_sphinx::Delay;
 use nym_sphinx::message::NymMessage;
-use nym_sphinx::params::{DEFAULT_NUM_MIX_HOPS, PacketSize, PacketType};
+use nym_sphinx::params::{PacketSize, PacketType, DEFAULT_NUM_MIX_HOPS};
 use nym_sphinx::preparer::{MessagePreparer, PreparedFragment, SurbOrigin};
+use nym_sphinx::Delay;
 use nym_task::connections::TransmissionLane;
 use nym_topology::{NymTopology, NymTopologyError};
 
-use crate::client::real_messages_control::{AckActionSender, Action};
 use crate::client::real_messages_control::acknowledgement_control::PendingAcknowledgement;
 use crate::client::real_messages_control::real_traffic_stream::{
     BatchRealMessageSender, RealMessage,
 };
+use crate::client::real_messages_control::{AckActionSender, Action};
 use crate::client::replies::reply_storage::{ReceivedReplySurbsMap, SentReplyKeys, UsedSenderTags};
 use crate::client::topology_control::{TopologyAccessor, TopologyReadPermit};
 
@@ -63,8 +63,8 @@ pub struct SurbWrappedPreparationError {
 }
 
 impl<T> From<T> for SurbWrappedPreparationError
-    where
-        T: Into<PreparationError>,
+where
+    T: Into<PreparationError>,
 {
     fn from(err: T) -> Self {
         SurbWrappedPreparationError {
@@ -164,8 +164,8 @@ pub(crate) struct MessageHandler<R> {
 }
 
 impl<R> MessageHandler<R>
-    where
-        R: CryptoRng + Rng,
+where
+    R: CryptoRng + Rng,
 {
     pub(crate) fn new(
         config: Config,
@@ -176,8 +176,8 @@ impl<R> MessageHandler<R>
         reply_key_storage: SentReplyKeys,
         tag_storage: UsedSenderTags,
     ) -> Self
-        where
-            R: Copy,
+    where
+        R: Copy,
     {
         let message_preparer = MessagePreparer::new(
             rng,
@@ -185,7 +185,7 @@ impl<R> MessageHandler<R>
             config.average_packet_delay,
             config.average_ack_delay,
         )
-            .with_mix_hops(config.num_mix_hops);
+        .with_mix_hops(config.num_mix_hops);
 
         MessageHandler {
             config,
@@ -333,7 +333,7 @@ impl<R> MessageHandler<R>
             .pad_and_split_message(msg, packet_size);
 
         if fragments.len() > reply_surbs.len() {
-            panic!{"message ({} fragments) too long for reply surbs (amount {})!", fragments.len(), reply_surbs.len()}
+            panic! {"message ({} fragments) too long for reply surbs (amount {})!", fragments.len(), reply_surbs.len()}
         }
 
         let mut real_messages = vec![];
@@ -352,8 +352,12 @@ impl<R> MessageHandler<R>
             real_messages.push(real_message);
 
             let delay = prepared_fragment.total_delay;
-            let pending_ack =
-                PendingAcknowledgement::new_anonymous(fragment, delay, target, is_extra_surb_request);
+            let pending_ack = PendingAcknowledgement::new_anonymous(
+                fragment,
+                delay,
+                target,
+                is_extra_surb_request,
+            );
             pending_acks.push(pending_ack);
         }
 
@@ -378,8 +382,14 @@ impl<R> MessageHandler<R>
 
         let surbs_request =
             ReplyMessage::new_surb_request_message(self.config.sender_address, amount);
-        self.try_send_single_surb_message(from, surbs_request, reply_surb, true, SurbOrigin::SourceCreated)
-            .await
+        self.try_send_single_surb_message(
+            from,
+            surbs_request,
+            reply_surb,
+            true,
+            SurbOrigin::SourceCreated,
+        )
+        .await
     }
 
     // // TODO: this will require additional argument to make it use different variant of `ReplyMessage`
@@ -421,7 +431,7 @@ impl<R> MessageHandler<R>
             fragments.into_iter().map(|f| (lane, f)).collect(),
             reply_surbs,
         )
-            .await
+        .await
     }
 
     pub(crate) async fn try_send_reply_chunks(
@@ -547,7 +557,15 @@ impl<R> MessageHandler<R>
     ) {
         let reply_message = ReplyMessage::new_data_message(message);
         let target_tag = AnonymousSenderTag::new_random(&mut OsRng);
-        self.try_send_multisurb_message(target_tag, reply_message, surbs, false, SurbOrigin::External).await.unwrap()
+        self.try_send_multisurb_message(
+            target_tag,
+            reply_message,
+            surbs,
+            false,
+            SurbOrigin::External,
+        )
+        .await
+        .unwrap()
     }
 
     pub(crate) async fn try_send_additional_reply_surbs(
@@ -572,7 +590,7 @@ impl<R> MessageHandler<R>
             TransmissionLane::AdditionalReplySurbs,
             packet_type,
         )
-            .await?;
+        .await?;
 
         log::trace!("storing {} reply keys", reply_keys.len());
         self.reply_key_storage.insert_multiple(reply_keys);

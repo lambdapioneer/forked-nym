@@ -3,10 +3,13 @@
 
 use crate::encryption_key::{SurbEncryptionKey, SurbEncryptionKeyError, SurbEncryptionKeySize};
 use nym_crypto::generic_array::typenum::Unsigned;
+use nym_crypto::generic_array::GenericArray;
 use nym_sphinx_addressing::clients::{ClientEncryptionKey, Recipient};
 use nym_sphinx_addressing::nodes::{NymNodeRoutingAddress, MAX_NODE_ADDRESS_UNPADDED_LEN};
 use nym_sphinx_params::packet_sizes::PacketSize;
-use nym_sphinx_params::{PacketType, DEFAULT_NUM_MIX_HOPS, SURB_MAX_VARIANT_OVERHEAD, SURB_PUDDING_VARIANT_OVERHEAD};
+use nym_sphinx_params::{
+    PacketType, DEFAULT_NUM_MIX_HOPS, SURB_MAX_VARIANT_OVERHEAD, SURB_PUDDING_VARIANT_OVERHEAD,
+};
 use nym_sphinx_types::{NymPacket, SURBMaterial, SphinxError, SURB};
 use nym_topology::{NymTopology, NymTopologyError};
 use rand::{CryptoRng, RngCore};
@@ -16,15 +19,13 @@ use std::convert::TryFrom;
 use std::fmt::{self, Formatter};
 use std::time;
 use thiserror::Error;
-use nym_crypto::generic_array::GenericArray;
 
-
+use nym_crypto::aes;
+use nym_crypto::asymmetric::encryption::KeyPair;
+use nym_crypto::ctr;
 use nym_crypto::shared_key::new_ephemeral_shared_key;
 use nym_crypto::symmetric::stream_cipher;
 use nym_crypto::symmetric::stream_cipher::CipherKey;
-use nym_crypto::asymmetric::encryption::KeyPair;
-use nym_crypto::aes;
-use nym_crypto::ctr;
 use rand::rngs::OsRng;
 type Aes128Ctr = ctr::Ctr64LE<aes::Aes128>;
 
@@ -111,7 +112,11 @@ impl ReplySurb {
     {
         let route =
             topology.random_route_to_gateway(rng, DEFAULT_NUM_MIX_HOPS, recipient.gateway())?;
-        let delays = nym_sphinx_routing::generate_from_average_duration_with_rng(average_delay, route.len(), rng);
+        let delays = nym_sphinx_routing::generate_from_average_duration_with_rng(
+            average_delay,
+            route.len(),
+            rng,
+        );
         let destination = recipient.as_sphinx_destination();
 
         let surb_material = SURBMaterial::new(route, delays, destination);
@@ -135,18 +140,17 @@ impl ReplySurb {
         // derive an ephemeral secret using an ephemeral key pair and the recipient public key
         let ephemeral_key_pair = KeyPair::new(&mut OsRng);
         let recipient_public_key: &ClientEncryptionKey = recipient.encryption_key();
-        let ephemeral_secret = ephemeral_key_pair.private_key().diffie_hellman(recipient_public_key);
+        let ephemeral_secret = ephemeral_key_pair
+            .private_key()
+            .diffie_hellman(recipient_public_key);
 
         // encrypt the surb encryption key using the ephemeral secret
         // TODO: both `iv` and `key` should use a KDF
         let iv = stream_cipher::iv_from_slice::<Aes128Ctr>(&ephemeral_secret[..16]);
         let key = CipherKey::<Aes128Ctr>::from_slice(&ephemeral_secret[16..32]);
 
-        let encrypted_encryption_key = stream_cipher::encrypt::<Aes128Ctr>(
-            &key,
-            &iv,
-            &surb_encryption_key.to_bytes(),
-        );
+        let encrypted_encryption_key =
+            stream_cipher::encrypt::<Aes128Ctr>(&key, &iv, &surb_encryption_key.to_bytes());
 
         // we include 8 bytes of 0x00 as a convenient decryption check
         let encrypted_zeros = stream_cipher::encrypt::<Aes128Ctr>(
@@ -163,7 +167,8 @@ impl ReplySurb {
         // [^1] Note: for a real-world implementation we would want to blind this using Elligator
         // or similar so that this part of the payload is also indistinguishable from a random
         // string.
-        ephemeral_key_pair.public_key()
+        ephemeral_key_pair
+            .public_key()
             .to_bytes()
             .into_iter()
             .chain(encrypted_zeros)
@@ -204,9 +209,11 @@ impl ReplySurb {
         let offset_after_encryption_key = SurbEncryptionKeySize::USIZE;
         let offset_after_variant_data = offset_after_encryption_key + SURB_PUDDING_VARIANT_OVERHEAD;
 
-        let encryption_key = SurbEncryptionKey::try_from_bytes(&bytes[..offset_after_encryption_key])?;
+        let encryption_key =
+            SurbEncryptionKey::try_from_bytes(&bytes[..offset_after_encryption_key])?;
 
-        let external_variant_data = Vec::from(&bytes[offset_after_encryption_key..offset_after_variant_data]);
+        let external_variant_data =
+            Vec::from(&bytes[offset_after_encryption_key..offset_after_variant_data]);
 
         let surb = match SURB::from_bytes(&bytes[offset_after_variant_data..]) {
             Err(err) => return Err(ReplySurbError::RecoveryError(err)),
@@ -246,7 +253,11 @@ impl ReplySurb {
     ) -> Result<(NymPacket, NymNodeRoutingAddress), ReplySurbError> {
         let message_bytes = message.as_ref();
         if message_bytes.len() != packet_size.plaintext_size() {
-            eprintln!("{} != {}", message_bytes.len(), packet_size.plaintext_size());
+            eprintln!(
+                "{} != {}",
+                message_bytes.len(),
+                packet_size.plaintext_size()
+            );
             return Err(ReplySurbError::UnpaddedMessageError);
         }
 

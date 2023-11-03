@@ -11,6 +11,7 @@ use nym_sphinx::addressing::clients::Recipient;
 use nym_sphinx::anonymous_replies::requests::AnonymousSenderTag;
 use nym_sphinx::anonymous_replies::ReplySurb;
 use nym_sphinx::chunking::fragment::{Fragment, FragmentIdentifier};
+use nym_sphinx::preparer::SurbOrigin;
 use nym_task::connections::{ConnectionId, TransmissionLane};
 use rand::{CryptoRng, Rng};
 use std::cmp::{max, min};
@@ -19,7 +20,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 use time::OffsetDateTime;
-use nym_sphinx::preparer::SurbOrigin;
 
 use crate::client::helpers::new_interval_stream;
 use crate::client::transmission_buffer::TransmissionBuffer;
@@ -578,15 +578,18 @@ where
 
         // TODO: we currently ignore retransmissions for our custom SURBs that are created external
         //.expect("attempted to retransmit a packet to an unknown recipient - we shouldn't have sent the original packet in the first place!");
-        let Some((maybe_reply_surb, _)) = x
-        else {
+        let Some((maybe_reply_surb, _)) = x else {
             return;
         };
 
         if let Some(reply_surb) = maybe_reply_surb {
             match self
                 .message_handler
-                .try_prepare_single_reply_chunk_for_sending(reply_surb, ack_ref.fragment_data(), SurbOrigin::SourceCreated)
+                .try_prepare_single_reply_chunk_for_sending(
+                    reply_surb,
+                    ack_ref.fragment_data(),
+                    SurbOrigin::SourceCreated,
+                )
                 .await
             {
                 Ok(prepared) => {

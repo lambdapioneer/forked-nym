@@ -6,6 +6,8 @@ pub mod asymmetric;
 pub mod bech32_address_validation;
 #[cfg(feature = "hashing")]
 pub mod crypto_hash;
+#[cfg(feature = "prng")]
+pub mod deterministic_prng;
 #[cfg(feature = "hashing")]
 pub mod hkdf;
 #[cfg(feature = "hashing")]
@@ -14,8 +16,6 @@ pub mod hmac;
 pub mod shared_key;
 #[cfg(feature = "symmetric")]
 pub mod symmetric;
-#[cfg(feature = "prng")]
-pub mod deterministic_prng;
 
 #[cfg(feature = "hashing")]
 pub use digest::{Digest, OutputSizeUser};

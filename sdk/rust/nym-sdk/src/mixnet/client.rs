@@ -491,7 +491,6 @@ where
         }
         let config = self.config.debug_config.clone();
 
-
         let (mut started_client, nym_address) = self.connect_to_mixnet_common().await?;
         let client_input = started_client.client_input.register_producer();
         let mut client_output = started_client.client_output.register_consumer();

@@ -8,9 +8,9 @@ use log::{debug, info};
 use tap::TapFallible;
 use url::Url;
 
-use nym_bandwidth_controller::BandwidthController;
 #[cfg(target_arch = "wasm32")]
 use nym_bandwidth_controller::wasm_mockups::DkgQueryClient;
+use nym_bandwidth_controller::BandwidthController;
 use nym_credential_storage::storage::Storage as CredentialStorage;
 use nym_crypto::asymmetric::{encryption, identity};
 use nym_gateway_client::{
@@ -22,19 +22,18 @@ use nym_sphinx::addressing::clients::Recipient;
 use nym_sphinx::addressing::nodes::NodeIdentity;
 use nym_sphinx::params::PacketType;
 use nym_sphinx::receiver::{ReconstructedMessage, SphinxMessageReceiver};
-use nym_task::{TaskClient, TaskManager};
 use nym_task::connections::{ConnectionCommandReceiver, ConnectionCommandSender, LaneQueueLengths};
+use nym_task::{TaskClient, TaskManager};
 use nym_topology::provider_trait::TopologyProvider;
 #[cfg(not(target_arch = "wasm32"))]
 use nym_validator_client::nyxd::traits::DkgQueryClient;
 
-use crate::{config, spawn_future};
 use crate::client::base_client::storage::gateway_details::GatewayDetailsStore;
 use crate::client::base_client::storage::MixnetClientStorage;
 use crate::client::cover_traffic_stream::LoopCoverTrafficStream;
 use crate::client::inbound_messages::{InputMessage, InputMessageReceiver, InputMessageSender};
-use crate::client::key_manager::ManagedKeys;
 use crate::client::key_manager::persistence::KeyStore;
+use crate::client::key_manager::ManagedKeys;
 use crate::client::mix_traffic::{BatchMixMessageSender, MixTrafficController};
 use crate::client::real_messages_control;
 use crate::client::real_messages_control::RealMessagesController;
@@ -46,13 +45,14 @@ use crate::client::replies::reply_controller::{ReplyControllerReceiver, ReplyCon
 use crate::client::replies::reply_storage::{
     CombinedReplyStorage, PersistentReplyStorage, ReplyStorageBackend, SentReplyKeys,
 };
+use crate::client::topology_control::nym_api_provider::NymApiTopologyProvider;
 use crate::client::topology_control::{
     TopologyAccessor, TopologyRefresher, TopologyRefresherConfig,
 };
-use crate::client::topology_control::nym_api_provider::NymApiTopologyProvider;
 use crate::config::{Config, DebugConfig, GatewayEndpointConfig};
 use crate::error::ClientCoreError;
-use crate::init::{GatewaySetup, InitialisationDetails, setup_gateway};
+use crate::init::{setup_gateway, GatewaySetup, InitialisationDetails};
+use crate::{config, spawn_future};
 
 use super::received_buffer::ReceivedBufferMessage;
 
@@ -168,9 +168,9 @@ pub struct BaseClientBuilder<'a, C, S: MixnetClientStorage> {
 }
 
 impl<'a, C, S> BaseClientBuilder<'a, C, S>
-    where
-        S: MixnetClientStorage + 'static,
-        C: DkgQueryClient + Send + Sync + 'static,
+where
+    S: MixnetClientStorage + 'static,
+    C: DkgQueryClient + Send + Sync + 'static,
 {
     pub fn new(
         base_config: &'a Config,
@@ -268,7 +268,7 @@ impl<'a, C, S> BaseClientBuilder<'a, C, S>
             lane_queue_lengths,
             client_connection_rx,
         )
-            .start_with_shutdown(shutdown, packet_type);
+        .start_with_shutdown(shutdown, packet_type);
     }
 
     // buffer controlling all messages fetched from provider
@@ -302,9 +302,9 @@ impl<'a, C, S> BaseClientBuilder<'a, C, S>
         ack_sender: AcknowledgementSender,
         shutdown: TaskClient,
     ) -> Result<GatewayClient<C, S::CredentialStore>, ClientCoreError>
-        where
-            <S::KeyStore as KeyStore>::StorageError: Send + Sync + 'static,
-            <S::CredentialStore as CredentialStorage>::StorageError: Send + Sync + 'static,
+    where
+        <S::KeyStore as KeyStore>::StorageError: Send + Sync + 'static,
+        <S::CredentialStore as CredentialStorage>::StorageError: Send + Sync + 'static,
     {
         let gateway_address = gateway_config.gateway_listener.clone();
         let gateway_id = gateway_config.gateway_id;
@@ -403,8 +403,8 @@ impl<'a, C, S> BaseClientBuilder<'a, C, S>
         gateway_client: GatewayClient<C, S::CredentialStore>,
         shutdown: TaskClient,
     ) -> BatchMixMessageSender
-        where
-            <S::CredentialStore as CredentialStorage>::StorageError: Send + Sync + 'static,
+    where
+        <S::CredentialStore as CredentialStorage>::StorageError: Send + Sync + 'static,
     {
         info!("Starting mix traffic controller...");
         let (mix_traffic_controller, mix_tx) = MixTrafficController::new(gateway_client);
@@ -417,9 +417,9 @@ impl<'a, C, S> BaseClientBuilder<'a, C, S>
         backend: S::ReplyStore,
         shutdown: TaskClient,
     ) -> Result<CombinedReplyStorage, ClientCoreError>
-        where
-            <S::ReplyStore as ReplyStorageBackend>::StorageError: Sync + Send,
-            S::ReplyStore: Send + Sync,
+    where
+        <S::ReplyStore as ReplyStorageBackend>::StorageError: Sync + Send,
+        S::ReplyStore: Send + Sync,
     {
         log::trace!("Setup persistent reply storage");
         let persistent_storage = PersistentReplyStorage::new(backend);
@@ -441,9 +441,9 @@ impl<'a, C, S> BaseClientBuilder<'a, C, S>
     }
 
     async fn initialise_keys_and_gateway(&self) -> Result<InitialisationDetails, ClientCoreError>
-        where
-            <S::KeyStore as KeyStore>::StorageError: Sync + Send,
-            <S::GatewayDetailsStore as GatewayDetailsStore>::StorageError: Sync + Send,
+    where
+        <S::KeyStore as KeyStore>::StorageError: Sync + Send,
+        <S::GatewayDetailsStore as GatewayDetailsStore>::StorageError: Sync + Send,
     {
         setup_gateway(
             &self.setup_method,
@@ -452,16 +452,16 @@ impl<'a, C, S> BaseClientBuilder<'a, C, S>
             false,
             Some(&self.config.client.nym_api_urls),
         )
-            .await
+        .await
     }
 
     pub async fn start_base(mut self) -> Result<BaseClient, ClientCoreError>
-        where
-            S::ReplyStore: Send + Sync,
-            <S::KeyStore as KeyStore>::StorageError: Send + Sync,
-            <S::ReplyStore as ReplyStorageBackend>::StorageError: Sync + Send,
-            <S::CredentialStore as CredentialStorage>::StorageError: Send + Sync + 'static,
-            <S::GatewayDetailsStore as GatewayDetailsStore>::StorageError: Sync + Send,
+    where
+        S::ReplyStore: Send + Sync,
+        <S::KeyStore as KeyStore>::StorageError: Send + Sync,
+        <S::ReplyStore as ReplyStorageBackend>::StorageError: Sync + Send,
+        <S::CredentialStore as CredentialStorage>::StorageError: Send + Sync + 'static,
+        <S::GatewayDetailsStore as GatewayDetailsStore>::StorageError: Sync + Send,
     {
         info!("Starting nym client");
 
@@ -515,7 +515,7 @@ impl<'a, C, S> BaseClientBuilder<'a, C, S>
             ack_sender,
             task_manager.subscribe(),
         )
-            .await?;
+        .await?;
 
         let reply_storage =
             Self::setup_persistent_reply_storage(reply_storage_backend, task_manager.subscribe())
@@ -531,7 +531,7 @@ impl<'a, C, S> BaseClientBuilder<'a, C, S>
             shared_topology_accessor.clone(),
             task_manager.subscribe(),
         )
-            .await?;
+        .await?;
 
         Self::start_received_messages_buffer_controller(
             managed_keys.encryption_keypair(),
@@ -621,7 +621,7 @@ impl<'a, C, S> BaseClientBuilder<'a, C, S>
                 topology_accessor: shared_topology_accessor,
             },
             task_manager,
-            client_secrets
+            client_secrets,
         })
     }
 }

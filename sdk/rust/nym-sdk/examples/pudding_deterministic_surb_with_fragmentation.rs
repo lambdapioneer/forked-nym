@@ -15,8 +15,14 @@ async fn main() {
     let bob_address = bob.nym_address();
     println!("bob_address={bob_address}");
 
-    let many_surbs = alice.create_surbs(bob_address, b"nonce".to_vec(), 10).await.unwrap();
-    let many_serialized_surbs: Vec<String> = many_surbs.into_iter().map(|x| x.to_base58_string()).collect();
+    let many_surbs = alice
+        .create_surbs(bob_address, b"nonce".to_vec(), 10)
+        .await
+        .unwrap();
+    let many_serialized_surbs: Vec<String> = many_surbs
+        .into_iter()
+        .map(|x| x.to_base58_string())
+        .collect();
     assert_eq!(many_serialized_surbs.len(), 10);
 
     // that's Charlie: they use our SURBs to send a message
@@ -25,12 +31,16 @@ async fn main() {
     println!("charlie_address={charlie_address}");
 
     // the message is much larger than what would fit in the payload of a single message
-    let many_surbs: Vec<ReplySurb> = many_serialized_surbs.into_iter().map(|x| ReplySurb::from_base58_string(x).unwrap()).collect();
+    let many_surbs: Vec<ReplySurb> = many_serialized_surbs
+        .into_iter()
+        .map(|x| ReplySurb::from_base58_string(x).unwrap())
+        .collect();
     let very_long_message = [42u8; 4000];
-    charlie.send_bytes_with_surbs(many_surbs, very_long_message).await;
+    charlie
+        .send_bytes_with_surbs(many_surbs, very_long_message)
+        .await;
 
     // and back to Bob: let's see that they receive our message
-    bob
-        .on_messages(|msg| println!("Received a message with {} bytes", &msg.message.len()))
+    bob.on_messages(|msg| println!("Received a message with {} bytes", &msg.message.len()))
         .await;
 }

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use nym_sphinx::addressing::clients::Recipient;
-use nym_sphinx::anonymous_replies::ReplySurb;
 use nym_sphinx::anonymous_replies::requests::AnonymousSenderTag;
+use nym_sphinx::anonymous_replies::ReplySurb;
 use nym_sphinx::forwarding::packet::MixPacket;
 use nym_sphinx::params::PacketType;
 use nym_task::connections::TransmissionLane;
@@ -152,7 +152,7 @@ impl InputMessage {
             | InputMessage::Anonymous { lane, .. }
             | InputMessage::Reply { lane, .. }
             | InputMessage::Premade { lane, .. } => lane,
-            | InputMessage::WithSuppliedSurbs { lane, .. } => lane,
+            InputMessage::WithSuppliedSurbs { lane, .. } => lane,
             InputMessage::MessageWrapper { message, .. } => message.lane(),
         }
     }

@@ -1,11 +1,11 @@
 // Copyright 2021 - Nym Technologies SA <contact@nymtech.net>
 // SPDX-License-Identifier: Apache-2.0
 
-use log::info;
 use crate::fragment::{
     linked_fragment_payload_max_len, unlinked_fragment_payload_max_len, Fragment,
     LINKED_FRAGMENTED_HEADER_LEN, UNLINKED_FRAGMENTED_HEADER_LEN,
 };
+use log::info;
 use rand::Rng;
 
 /// In the simplest case of message being divided into a single set, the set has the upper bound

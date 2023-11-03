@@ -7,19 +7,19 @@ use std::time::Duration;
 use rand::{CryptoRng, Rng};
 
 use nym_crypto::asymmetric::encryption;
-use nym_sphinx_acknowledgements::AckKey;
 use nym_sphinx_acknowledgements::surb_ack::SurbAck;
+use nym_sphinx_acknowledgements::AckKey;
 use nym_sphinx_addressing::clients::Recipient;
 use nym_sphinx_addressing::nodes::NymNodeRoutingAddress;
 use nym_sphinx_anonymous_replies::reply_surb::ReplySurb;
 use nym_sphinx_chunking::fragment::{Fragment, FragmentIdentifier};
 use nym_sphinx_forwarding::packet::MixPacket;
-use nym_sphinx_params::{DEFAULT_NUM_MIX_HOPS, PacketType, SURB_MAX_VARIANT_OVERHEAD};
 use nym_sphinx_params::packet_sizes::PacketSize;
+use nym_sphinx_params::{PacketType, DEFAULT_NUM_MIX_HOPS, SURB_MAX_VARIANT_OVERHEAD};
 use nym_sphinx_types::{Delay, NymPacket};
 use nym_topology::{NymTopology, NymTopologyError};
 
-use crate::message::{ACK_OVERHEAD, NymMessage, OUTFOX_ACK_OVERHEAD};
+use crate::message::{NymMessage, ACK_OVERHEAD, OUTFOX_ACK_OVERHEAD};
 use crate::NymPayloadBuilder;
 
 pub(crate) mod payload;
@@ -157,8 +157,14 @@ pub trait FragmentPreparer {
         let ack_delay = surb_ack.expected_total_delay();
 
         let maybe_packet_payload = match surb_origin {
-            SurbOrigin::SourceCreated => NymPayloadBuilder::new(fragment, surb_ack).build_reply(reply_surb.encryption_key()),
-            SurbOrigin::External => NymPayloadBuilder::new(fragment, surb_ack).build_external_reply(reply_surb.encryption_key(), &reply_surb.external_variant_data),
+            SurbOrigin::SourceCreated => {
+                NymPayloadBuilder::new(fragment, surb_ack).build_reply(reply_surb.encryption_key())
+            }
+            SurbOrigin::External => NymPayloadBuilder::new(fragment, surb_ack)
+                .build_external_reply(
+                    reply_surb.encryption_key(),
+                    &reply_surb.external_variant_data,
+                ),
         };
 
         let packet_payload = match maybe_packet_payload {
@@ -331,8 +337,8 @@ pub struct MessagePreparer<R> {
 }
 
 impl<R> MessagePreparer<R>
-    where
-        R: CryptoRng + Rng,
+where
+    R: CryptoRng + Rng,
 {
     pub fn new(
         rng: R,

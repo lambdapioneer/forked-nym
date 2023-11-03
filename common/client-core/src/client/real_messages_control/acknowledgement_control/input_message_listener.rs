@@ -8,11 +8,11 @@ use crate::client::replies::reply_controller::ReplyControllerSender;
 use log::*;
 use nym_sphinx::addressing::clients::Recipient;
 use nym_sphinx::anonymous_replies::requests::AnonymousSenderTag;
+use nym_sphinx::anonymous_replies::ReplySurb;
 use nym_sphinx::forwarding::packet::MixPacket;
 use nym_sphinx::params::PacketType;
 use nym_task::connections::TransmissionLane;
 use rand::{CryptoRng, Rng};
-use nym_sphinx::anonymous_replies::ReplySurb;
 
 /// Module responsible for dealing with the received messages: splitting them, creating acknowledgements,
 /// putting everything into sphinx packets, etc.
@@ -75,8 +75,7 @@ where
         lane: TransmissionLane,
         packet_type: PacketType,
     ) {
-        self
-            .message_handler
+        self.message_handler
             .try_send_message_with_supplied_surbs(surbs, data, lane, packet_type)
             .await
     }
@@ -116,12 +115,9 @@ where
 
     async fn on_input_message(&mut self, msg: InputMessage) {
         match msg {
-            InputMessage::WithSuppliedSurbs {
-                surbs,
-                data,
-                lane,
-            } => {
-                self.handle_message_with_supplied_surbs(surbs, data, lane, PacketType::Mix).await;
+            InputMessage::WithSuppliedSurbs { surbs, data, lane } => {
+                self.handle_message_with_supplied_surbs(surbs, data, lane, PacketType::Mix)
+                    .await;
             }
             InputMessage::Regular {
                 recipient,
@@ -152,12 +148,9 @@ where
                 message,
                 packet_type,
             } => match *message {
-                InputMessage::WithSuppliedSurbs {
-                    surbs,
-                    data,
-                    lane,
-                } => {
-                    self.handle_message_with_supplied_surbs(surbs, data, lane, packet_type).await;
+                InputMessage::WithSuppliedSurbs { surbs, data, lane } => {
+                    self.handle_message_with_supplied_surbs(surbs, data, lane, packet_type)
+                        .await;
                 }
                 InputMessage::Regular {
                     recipient,

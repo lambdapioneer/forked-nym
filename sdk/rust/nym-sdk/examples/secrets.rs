@@ -1,5 +1,5 @@
-use std::ops::Deref;
 use nym_sdk::mixnet;
+use std::ops::Deref;
 
 #[tokio::main]
 async fn main() {
@@ -11,9 +11,18 @@ async fn main() {
     println!("Our client nym address is: {our_address}");
 
     let secrets = client.get_secrets();
-    println!("Our identity keypair: {:?}", secrets.identity_keypair.deref());
+    println!(
+        "Our identity keypair: {:?}",
+        secrets.identity_keypair.deref()
+    );
 
     // The encryption keypair uses the `x25519_dalek` crate which does not like `Debug`
-    println!("Our encryption public key: {:?}", secrets.encryption_keypair.public_key().to_base58_string());
-    println!("Our encryption secret key: {:?}", secrets.encryption_keypair.private_key().to_base58_string());
+    println!(
+        "Our encryption public key: {:?}",
+        secrets.encryption_keypair.public_key().to_base58_string()
+    );
+    println!(
+        "Our encryption secret key: {:?}",
+        secrets.encryption_keypair.private_key().to_base58_string()
+    );
 }

@@ -349,17 +349,17 @@ impl<R: MessageReceiver> ReceivedMessagesBuffer<R> {
             // if it succeeds we can decrypt the surb encryption key and return it with the rest
             // of the message
             let iv = stream_cipher::iv_from_slice::<Aes128Ctr>(&ephemeral_secret[..16]);
-            let surb_encryption_key = SurbEncryptionKey::try_from_bytes(
-                &stream_cipher::decrypt::<Aes128Ctr>(
+            let surb_encryption_key =
+                SurbEncryptionKey::try_from_bytes(&stream_cipher::decrypt::<Aes128Ctr>(
                     &key,
                     &iv,
                     &raw_message[40..56],
-                )
-            ).unwrap();
+                ))
+                .unwrap();
             return Some((
                 surb_encryption_key,
                 &mut raw_message[SURB_MAX_VARIANT_OVERHEAD..],
-            ))
+            ));
         }
 
         //
@@ -396,12 +396,13 @@ impl<R: MessageReceiver> ReceivedMessagesBuffer<R> {
         for mut msg in msgs {
             // check first `HasherOutputSize` bytes if they correspond to known encryption key
             // if yes - this is a reply message
-            let completed_message =
-                if let Some((reply_key, reply_message)) = self.get_reply_key(&mut msg, &inner_guard.local_encryption_keypair) {
-                    inner_guard.process_received_reply(reply_message, reply_key)?
-                } else {
-                    inner_guard.process_received_regular_packet(msg)
-                };
+            let completed_message = if let Some((reply_key, reply_message)) =
+                self.get_reply_key(&mut msg, &inner_guard.local_encryption_keypair)
+            {
+                inner_guard.process_received_reply(reply_message, reply_key)?
+            } else {
+                inner_guard.process_received_regular_packet(msg)
+            };
 
             if let Some(completed) = completed_message {
                 info!("received {completed}");

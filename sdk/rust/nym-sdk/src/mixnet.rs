@@ -60,6 +60,9 @@ pub use nym_credential_storage::{
     ephemeral_storage::EphemeralStorage as EphemeralCredentialStorage, models::CoconutCredential,
     storage::Storage as CredentialStorage,
 };
+pub use nym_crypto::asymmetric::{
+    encryption::KeyPair as EncryptionKeyPair, identity::KeyPair as IdentityKeyPair,
+};
 pub use nym_network_defaults::NymNetworkDetails;
 pub use nym_socks5_client_core::config::Socks5;
 pub use nym_sphinx::{
@@ -68,15 +71,10 @@ pub use nym_sphinx::{
         nodes::NodeIdentity,
     },
     anonymous_replies::requests::AnonymousSenderTag,
-    receiver::ReconstructedMessage,
     anonymous_replies::ReplySurb,
     forwarding::packet::MixPacket,
-};
-pub use nym_crypto::asymmetric::{
-    encryption::KeyPair as EncryptionKeyPair, 
-    identity::KeyPair as IdentityKeyPair,
+    receiver::ReconstructedMessage,
 };
 pub use nym_topology::{provider_trait::TopologyProvider, NymTopology};
 pub use paths::StoragePaths;
 pub use socks5_client::Socks5MixnetClient;
-

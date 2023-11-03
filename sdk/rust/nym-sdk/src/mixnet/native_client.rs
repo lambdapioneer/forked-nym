@@ -3,23 +3,23 @@ use std::iter::zip;
 use futures::StreamExt;
 use rand::rngs::OsRng;
 
+use nym_client_core::client::base_client::ClientSecrets;
 use nym_client_core::client::{
     base_client::{ClientInput, ClientOutput, ClientState},
     inbound_messages::InputMessage,
     received_buffer::ReconstructedMessagesReceiver,
 };
-use nym_client_core::client::base_client::ClientSecrets;
 use nym_client_core::config::DebugConfig;
 use nym_crypto::deterministic_prng::DeterministicPRNG;
-use nym_sphinx::{params::PacketType, receiver::ReconstructedMessage};
 use nym_sphinx::acknowledgements::AckKey;
 use nym_sphinx::addressing::clients::Recipient;
-use nym_sphinx::anonymous_replies::ReplySurb;
 use nym_sphinx::anonymous_replies::requests::{AnonymousSenderTag, ReplyMessage};
+use nym_sphinx::anonymous_replies::ReplySurb;
 use nym_sphinx::forwarding::packet::MixPacket;
 use nym_sphinx::message::NymMessage;
 use nym_sphinx::params::PacketSize;
 use nym_sphinx::preparer::{MessagePreparer, SurbOrigin};
+use nym_sphinx::{params::PacketType, receiver::ReconstructedMessage};
 use nym_task::{
     connections::{ConnectionCommandSender, LaneQueueLengths, TransmissionLane},
     TaskManager,
@@ -57,7 +57,6 @@ pub struct MixnetClient {
 
     pub(crate) client_secrets: ClientSecrets,
 }
-
 
 impl MixnetClient {
     /// Create a new client and connect to the mixnet using ephemeral in-memory keys that are
@@ -108,7 +107,12 @@ impl MixnetClient {
         };
     }
 
-    pub async fn create_surbs(&self, destination: &Recipient, nonce: Vec<u8>, num: u32) -> Option<Vec<ReplySurb>> {
+    pub async fn create_surbs(
+        &self,
+        destination: &Recipient,
+        nonce: Vec<u8>,
+        num: u32,
+    ) -> Option<Vec<ReplySurb>> {
         let topology_permit = self.client_state.topology_accessor.get_read_permit().await;
         let topology_ref_option = topology_permit.as_ref();
         if topology_ref_option.is_none() {
@@ -126,7 +130,8 @@ impl MixnetClient {
                 &destination,
                 self.config.traffic.average_packet_delay,
                 topology_ref_option.as_ref().unwrap(),
-            ).unwrap();
+            )
+            .unwrap();
             result.push(surb);
         }
 
@@ -153,7 +158,7 @@ impl MixnetClient {
             self.config.traffic.average_packet_delay,
             self.config.acknowledgements.average_ack_delay,
         )
-            .with_mix_hops(3);
+        .with_mix_hops(3);
 
         let packet_size = PacketSize::RegularPacket;
         let message = NymMessage::new_plain(message.as_ref().to_vec());
@@ -167,13 +172,15 @@ impl MixnetClient {
             // Since we have no way to handle the acks anyway, we choose a random key
             let ack_key = AckKey::new(&mut OsRng);
 
-            let prepared_fragment = message_preparer.prepare_chunk_for_sending(
-                chunk_clone,
-                topology,
-                &ack_key,
-                &recipient,
-                PacketType::Mix,
-            ).unwrap();
+            let prepared_fragment = message_preparer
+                .prepare_chunk_for_sending(
+                    chunk_clone,
+                    topology,
+                    &ack_key,
+                    &recipient,
+                    PacketType::Mix,
+                )
+                .unwrap();
 
             mix_packets.push(prepared_fragment.mix_packet);
         }
@@ -201,7 +208,7 @@ impl MixnetClient {
             self.config.traffic.average_packet_delay,
             self.config.acknowledgements.average_ack_delay,
         )
-            .with_mix_hops(3);
+        .with_mix_hops(3);
 
         let packet_size = PacketSize::RegularPacket;
 
@@ -211,7 +218,7 @@ impl MixnetClient {
         let fragments = message_preparer.pad_and_split_message(message, packet_size);
 
         if fragments.len() > reply_surbs.len() {
-            panic!{"message ({} fragments) too long for reply surbs (amount {})!", fragments.len(), reply_surbs.len()}
+            panic! {"message ({} fragments) too long for reply surbs (amount {})!", fragments.len(), reply_surbs.len()}
         }
 
         let mut mix_packets = Vec::with_capacity(fragments.len());
@@ -333,24 +340,17 @@ impl MixnetClient {
         self.send(input_msg).await
     }
 
-    pub async fn send_str_with_surb(
-        &self,
-        surbs: Vec<ReplySurb>,
-        message: &str,
-    ) {
+    pub async fn send_str_with_surb(&self, surbs: Vec<ReplySurb>, message: &str) {
         self.send_bytes_with_surbs(surbs, message).await;
     }
 
-    pub async fn send_bytes_with_surbs<M: AsRef<[u8]>>(
-        &self,
-        surbs: Vec<ReplySurb>,
-        message: M,
-    ) {
+    pub async fn send_bytes_with_surbs<M: AsRef<[u8]>>(&self, surbs: Vec<ReplySurb>, message: M) {
         self.send(InputMessage::WithSuppliedSurbs {
             surbs,
             data: Vec::from(message.as_ref()),
             lane: TransmissionLane::General,
-        }).await;
+        })
+        .await;
     }
 
     /// Sends stringy reply data to the supplied anonymous recipient.
@@ -407,7 +407,11 @@ impl MixnetClient {
     }
 
     pub async fn send_packets(&self, packets: Vec<MixPacket>) {
-        self.send(InputMessage::Premade { msgs: packets, lane: TransmissionLane::General }).await
+        self.send(InputMessage::Premade {
+            msgs: packets,
+            lane: TransmissionLane::General,
+        })
+        .await
     }
 
     /// Sends a [`InputMessage`] to the mixnet. This is the most low-level sending function, for
@@ -428,8 +432,8 @@ impl MixnetClient {
 
     /// Provide a callback to execute on incoming messages from the mixnet.
     pub async fn on_messages<F>(&mut self, fun: F)
-        where
-            F: Fn(ReconstructedMessage),
+    where
+        F: Fn(ReconstructedMessage),
     {
         while let Some(msgs) = self.wait_for_messages().await {
             for msg in msgs {
