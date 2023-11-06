@@ -333,7 +333,6 @@ impl<R: MessageReceiver> ReceivedMessagesBuffer<R> {
         // re-derive the shared secret
         let possible_ephemeral_public_key = PublicKey::from_bytes(&raw_message[0..32]).unwrap();
         let local_private_key = local_encryption_key_pair.private_key();
-        let local_public_key = local_encryption_key_pair.public_key();
         let ephemeral_secret = local_private_key.diffie_hellman(&possible_ephemeral_public_key);
 
         // recover encryption key from the shared secret

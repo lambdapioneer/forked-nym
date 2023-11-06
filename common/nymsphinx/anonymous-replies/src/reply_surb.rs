@@ -3,7 +3,6 @@
 
 use crate::encryption_key::{SurbEncryptionKey, SurbEncryptionKeyError, SurbEncryptionKeySize};
 use nym_crypto::generic_array::typenum::Unsigned;
-use nym_crypto::generic_array::GenericArray;
 use nym_sphinx_addressing::clients::{ClientEncryptionKey, Recipient};
 use nym_sphinx_addressing::nodes::{NymNodeRoutingAddress, MAX_NODE_ADDRESS_UNPADDED_LEN};
 use nym_sphinx_params::packet_sizes::PacketSize;
@@ -23,10 +22,8 @@ use thiserror::Error;
 use nym_crypto::aes;
 use nym_crypto::asymmetric::encryption::KeyPair;
 use nym_crypto::ctr;
-use nym_crypto::shared_key::new_ephemeral_shared_key;
 use nym_crypto::symmetric::stream_cipher;
 use nym_crypto::symmetric::stream_cipher::CipherKey;
-use rand::rngs::OsRng;
 type Aes128Ctr = ctr::Ctr64LE<aes::Aes128>;
 
 #[derive(Debug, Error)]
@@ -123,7 +120,7 @@ impl ReplySurb {
         let surb = surb_material.construct_SURB_with_rng(rng).unwrap();
 
         let encryption_key = SurbEncryptionKey::new(rng);
-        let external_variant_data = Self::build_external_variant_data(&recipient, &encryption_key);
+        let external_variant_data = Self::build_external_variant_data(&recipient, &encryption_key, rng);
 
         // this can't fail as we know we have a valid route to gateway and have correct number of delays
         Ok(ReplySurb {
@@ -133,12 +130,15 @@ impl ReplySurb {
         })
     }
 
-    fn build_external_variant_data(
+    fn build_external_variant_data<R>(
         recipient: &Recipient,
         surb_encryption_key: &SurbEncryptionKey,
-    ) -> Vec<u8> {
+        rng: &mut R,
+    ) -> Vec<u8>
+        where
+            R: RngCore + CryptoRng,{
         // derive an ephemeral secret using an ephemeral key pair and the recipient public key
-        let ephemeral_key_pair = KeyPair::new(&mut OsRng);
+        let ephemeral_key_pair = KeyPair::new(rng);
         let recipient_public_key: &ClientEncryptionKey = recipient.encryption_key();
         let ephemeral_secret = ephemeral_key_pair
             .private_key()
